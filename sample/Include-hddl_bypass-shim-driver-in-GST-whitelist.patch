@@ -1,0 +1,26 @@
+From 29e0c68d2083f78da1d770c3c1a5436c68f8affc Mon Sep 17 00:00:00 2001
+From: "Prathaban, Thinesh" <thinesh.prathaban@intel.com>
+Date: Mon, 6 May 2019 07:17:29 +0000
+Subject: [PATCH] Include hddl_bypass shim driver in GST whitelist
+
+Change-Id: I77ced36bce6fc24ff245fffee332b45afbe8ebb0
+Signed-off-by: Yeoh, Hoong Tee <hoong.tee.yeoh@intel.com>
+---
+ gst/vaapi/gstvaapipluginutil.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gst/vaapi/gstvaapipluginutil.c b/gst/vaapi/gstvaapipluginutil.c
+index 0d116b95..c48343df 100644
+--- a/gst/vaapi/gstvaapipluginutil.c
++++ b/gst/vaapi/gstvaapipluginutil.c
+@@ -886,6 +886,7 @@ gst_vaapi_driver_is_whitelisted (GstVaapiDisplay * display)
+     "Intel i965 driver",
+     "mesa gallium",
+     "Vsi hantro driver for VSI Hantro Encoder VC8000E V6.2 /Decoder VC8000D  - 0.0.0",
++    "hddl_bypass_drv_video",
+     NULL
+   };
+
+--
+2.16.1
+
