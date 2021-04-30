@@ -362,4 +362,11 @@ VAStatus HDDLShim_ExtractandCallVASetNumElements (HDDLShimCommContext *ctx, void
 VAStatus HDDLShim_ExtractandCallDynamicChannelID (HDDLShimCommContext *ctx, void *inPayload,
     void **outPayload);
 
+//!
+//! \brief   Obtain the VAConfigAttribType value
+//! \return  bool
+//!          Return TRUE if success, else FALSE
+//!
+bool HDDLShim_GetGPUNodesAttributes (VADisplay *vaDpy, VAProfile profile, VAEntrypoint entrypoint,
+    VAConfigAttribType type, uint32_t *value);
 #endif

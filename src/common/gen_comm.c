@@ -37,8 +37,6 @@
 #define SVE_INPUT_SLEEP_INTERVAL 1000000
 #endif  // ifdef SVE_HOOK
 
-int indicator = -1;
-
 CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
 {
     FILE *file;
@@ -55,7 +53,7 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
     // Read the connection.cfg file to setup the tcp/xlink connection to the server
     if ( (env = getenv ("CONFIG_PATH")) != NULL)
     {
-        path = strndup (env, strnlen_s (env, CONFIG_PATH_MAX_STRLEN));
+        path = strndup (env, strnlen (env, CONFIG_PATH_MAX_STRLEN));
 
         // Read the connection.cfg file to setup the tcp connection to the server
         if ( (path != NULL) && (file = fopen (path, "r")) != NULL)
@@ -91,7 +89,7 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
         fclose (file);
         return COMM_STATUS_FAILED;
     }
-    if ( (strcmp_s (mode, 5, "XLINK", &indicator) == 0) && (indicator == 0))
+    if (strncmp (mode, "XLINK", 5) == 0)
     {
         uint16_t channelTX = 0;
         uint16_t channelRX = 0;
@@ -103,12 +101,11 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
 
 	    if (configParam != NULL)
 	    {
-                if ( (strcmp_s (configParam, 9, "CHANNELTX", &indicator) == 0) && (indicator == 0))
+                if (strncmp (configParam, "CHANNELTX", 9) == 0)
                 {
                     channelTX = (int)strtol (lastInput, (char **)NULL, 16);
                 }
-                else if ( (strcmp_s (configParam, 9, "CHANNELRX", &indicator) == 0) &&
-		    (indicator == 0))
+                else if (strncmp (configParam, "CHANNELRX", 9) == 0)
                 {
                     channelRX = (int)strtol (lastInput, (char **)NULL, 16);
                 }
@@ -134,7 +131,7 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
             return COMM_STATUS_FAILED;
         }
     }
-    else if ( (strcmp_s (mode, 3, "TCP", &indicator) == 0) && (indicator == 0))
+    else if (strncmp (mode, "TCP", 3) == 0)
     {
 	//TODO: To uncomment out once able to release TCP support
         /*uint16_t portTX = 0;
@@ -143,22 +140,21 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
 
         while (fgets (line, sizeof (line), file) != NULL)
         {
-            memset_s (lastInput, sizeof (lastInput), 0);
+            memset (lastInput, 0, sizeof (lastInput));
             sscanf (line, "%8s %128s", firstInput, lastInput);
             configParam = strndup (firstInput, 15);
 
             if (configParam != NULL)
             {
-                if ( (strcmp_s (configParam, 6, "PORTTX", &indicator) == 0) && (indicator == 0))
+                if (strncmp (configParam, "PORTTX", 6) == 0)
                 {
                     portTX = (uint16_t)atoi (lastInput);
                 }
-                else if ( (strcmp_s (configParam, 6, "PORTRX", &indicator) == 0) &&
-		    (indicator == 0))
+                else if (strncmp (configParam, "PORTRX", 6) == 0)
                 {
                     portRX = (uint16_t)atoi (lastInput);
                 }
-                else if ( (strcmp_s (configParam, 2, "IP", &indicator) == 0) && (indicator == 0))
+                else if (strncmp (configParam, "IP", 2) == 0)
                 {
 	            if (strlen (lastInput) != 0)
 		    {
@@ -195,11 +191,11 @@ CommStatus Comm_ContextInitFromConfig (HDDLShimCommContext **ctx)
         SHIM_ERROR_MESSAGE ("Unsupported Communication mode");
 	return COMM_STATUS_FAILED;
     }
-    else if ( (strcmp_s (mode, 5, "UNITE", &indicator) == 0) && (indicator == 0))
+    else if (strncmp (mode, "UNITE", 5) == 0)
     {
         (*ctx)->commMode = COMM_MODE_UNITE;
-        (*ctx)->uniteCtx = Unite_ContextInit (QUERY_FROM_UNITE, QUERY_FROM_UNITE,
-            QUERY_FROM_UNITE);
+	(*ctx)->uniteCtx = Unite_ContextInit (QUERY_FROM_UNITE, QUERY_FROM_UNITE,
+            QUERY_FROM_UNITE, QUERY_FROM_UNITE);
 
         if ( (*ctx)->uniteCtx == NULL)
 	{
@@ -237,8 +233,8 @@ CommStatus Comm_ContextInit (HDDLShimCommContext **ctx, ShimThreadParams *thread
     }
     else if ( (*ctx)->commMode == COMM_MODE_UNITE)
     {
-        (*ctx)->uniteCtx = Unite_ContextInit (threadParams->tx, threadParams->rx,
-            threadParams->workloadId);
+	(*ctx)->uniteCtx = Unite_ContextInit (threadParams->tx, threadParams->rx,
+            threadParams->workloadId, threadParams->swDeviceId);
     }
 
     return commStatus;
@@ -519,7 +515,8 @@ CommStatus Comm_BatchFlush (HDDLShimCommContext *ctx, int outSize, void **outPay
     batchHeader.vaFunctionID = HDDLTransferBatch;
     batchHeader.size = batchPayload->offset;
 
-    memcpy_s (batchPayload->data, sizeof (HDDLVAData), &batchHeader, sizeof (HDDLVAData));
+    HDDLMemoryMgr_Memcpy (batchPayload->data, &batchHeader, sizeof (batchPayload->data),
+	sizeof (HDDLVAData));
 
     batchPayload->batchState = BATCH_OFF;
 
@@ -533,7 +530,7 @@ CommStatus Comm_BatchFlush (HDDLShimCommContext *ctx, int outSize, void **outPay
     }
     else if (payloadOp == PAYLOAD_RESET)
     {
-        memset_s (batchPayload, sizeof (HDDLShimBatchPayload), 0);
+	HDDLMemoryMgr_ZeroMemory (batchPayload, sizeof (HDDLShimBatchPayload));
         // Reserve the header for batch function and size identification before flush
         batchPayload->offset += sizeof (HDDLVAData);
     }
@@ -541,7 +538,7 @@ CommStatus Comm_BatchFlush (HDDLShimCommContext *ctx, int outSize, void **outPay
     return commStatus;
 }
 
-CommStatus  Comm_BatchAppend (HDDLShimCommContext* ctx, HDDLShimBatchPayload *batchPayload, 
+CommStatus Comm_BatchAppend (HDDLShimCommContext* ctx, HDDLShimBatchPayload *batchPayload,
     int inSize, void *inPayload, int outSize, void** outPayload)
 {
     CommStatus commStatus = COMM_STATUS_SUCCESS;
@@ -554,7 +551,8 @@ CommStatus  Comm_BatchAppend (HDDLShimCommContext* ctx, HDDLShimBatchPayload *ba
         batchHeader.vaFunctionID = HDDLTransferBatch;
         batchHeader.size = batchPayload->offset;
 
-        memcpy_s (batchPayload->data, sizeof(HDDLVAData), &batchHeader, sizeof(HDDLVAData));
+	HDDLMemoryMgr_Memcpy (batchPayload->data, &batchHeader, sizeof (batchPayload->data),
+            sizeof (HDDLVAData));
 
         HDDLVAData save = *(HDDLVAData*)(outPayload);
         commStatus = Comm_SingleSubmission (ctx, COMM_READ_FULL, batchPayload->offset,
@@ -563,7 +561,7 @@ CommStatus  Comm_BatchAppend (HDDLShimCommContext* ctx, HDDLShimBatchPayload *ba
         // restore functionId & size
         *(HDDLVAData*)(outPayload) = save;
 
-        memset (batchPayload, 0, sizeof(HDDLShimBatchPayload));
+	HDDLMemoryMgr_ZeroMemory (batchPayload, sizeof (HDDLShimBatchPayload));
         // Reserve the header for batch function and size identification before flush
         batchPayload->offset += sizeof(HDDLVAData);
     }
@@ -574,7 +572,8 @@ CommStatus  Comm_BatchAppend (HDDLShimCommContext* ctx, HDDLShimBatchPayload *ba
             inPayload, outSize, outPayload);
     }
 
-    memcpy_s ( (void *) (batchPayload->data + batchPayload->offset), inSize, inPayload, inSize);
+    HDDLMemoryMgr_Memcpy ( (void *) (batchPayload->data + batchPayload->offset), inPayload,
+	sizeof (batchPayload->data), inSize);
     batchPayload->offset += inSize;
     return commStatus;
 }
@@ -608,13 +607,14 @@ CommStatus Comm_BatchSubmission (HDDLShimCommContext *ctx, HDDLVAFunctionID func
 
     if (readOp == COMM_READ_FULL)
     {
-        memset_s (outPayload, outSize, 0);
+	HDDLMemoryMgr_ZeroMemory (outPayload, outSize);
+
         ( (HDDLVAData *)outPayload)->vaFunctionID = functionId;
         ( (HDDLVAData *)outPayload)->size = outSize;
     }
 
     // Begining of per frame batching
-    if (functionId == BATCH_FRAME_START_FUNC)
+    if (functionId == BATCH_FRAME_START_FUNC && ctx->batchThreadId == syscall (SYS_gettid))
     {
         if (batchPayload)
         {
@@ -868,15 +868,15 @@ CommStatus Comm_Reconnect (HDDLShimCommContext *ctx)
 
 void Comm_ProcessCommMode (CommMode *commMode, char *mode)
 {
-    if ( (strcmp_s (mode, 5, "unite", &indicator) == 0) && (indicator == 0))
+    if (strncmp (mode, "unite", 5) == 0)
     {
         *commMode = COMM_MODE_UNITE;
     }
-    else if ( (strcmp_s (mode, 5, "xlink", &indicator) == 0) && (indicator == 0))
+    else if (strncmp (mode, "xlink", 5) == 0)
     {
         *commMode = COMM_MODE_XLINK;
     }
-    else if ( (strcmp_s (mode, 3, "tcp", &indicator) == 0) && (indicator == 0))
+    else if (strncmp (mode, "tcp", 3) == 0)
     {
 	//TODO: To uncomment out once able to release TCP support
         //*commMode = COMM_MODE_TCP;
@@ -906,17 +906,17 @@ void Comm_GetCommMode (CommMode *commMode)
 
 	if (mode != NULL)
 	{
-            if ( (strcmp_s (mode, 5, "xlink", &indicator) == 0) && (indicator == 0))
+            if (strncmp (mode, "xlink", 5) == 0)
             {
                 *commMode = COMM_MODE_XLINK;
             }
-            else if ( (strcmp_s (mode, 3, "tcp", &indicator) == 0) && (indicator == 0))
+            else if (strncmp (mode, "tcp", 3) == 0)
             {
 		//TODO: To uncomment out once able to release TCP support
                 //*commMode = COMM_MODE_TCP;
 		SHIM_ERROR_MESSAGE ("* Invalid communication mode");
             }
-	    else if ( (strcmp_s (mode, 5, "unite", &indicator) == 0) && (indicator == 0))
+	    else if (strncmp (mode, "unite", 5) == 0)
 	    {
 	        *commMode = COMM_MODE_UNITE;
 	    }
@@ -1032,7 +1032,7 @@ void Comm_GetNewCommChannel (CommMode commMode, uint16_t *tx, uint16_t *rx)
 
     newChannel = -1;
     inputChannel = false;
-    memset_s (read, sizeof (read), 0);
+    HDDLMemoryMgr_ZeroMemory (read, sizeof (read));
     while (inputChannel != true)
     {
         // Get RX Channel/Port
@@ -1101,39 +1101,39 @@ void Comm_GetNewCommChannel (CommMode commMode, uint16_t *tx, uint16_t *rx)
             if (chunk[0] != '#')
             {
                 // Get tx or rx
-                if (!memcmp (txStr, chunk, strnlen_s (txStr, RX_TX_MAX_STRLEN)))
+                if (!memcmp (txStr, chunk, strnlen (txStr,RX_TX_MAX_STRLEN)))
                 {
-                    chunk[ strnlen_s (chunk, sizeof (chunk)) - 1 ] = '\0';
+                    chunk[ strnlen (chunk, sizeof (chunk)) - 1 ] = '\0';
 
                     if (commMode == COMM_MODE_XLINK)
                     {
-                        *tx = (uint16_t)strtol (&chunk[strnlen_s (txStr , RX_TX_MAX_STRLEN)],
+                        *tx = (uint16_t)strtol (&chunk[strnlen (txStr, RX_TX_MAX_STRLEN)],
 		            (char **)NULL, 16);
                     }
                     else if (commMode == COMM_MODE_TCP)
                     {
-                        *tx = (uint16_t)atoi (&chunk[strnlen_s (txStr, RX_TX_MAX_STRLEN)]);
+                        *tx = (uint16_t)atoi (&chunk[strnlen (txStr, RX_TX_MAX_STRLEN)]);
                     }
 
-                } else if (!memcmp (rxStr, chunk, strnlen_s (rxStr, RX_TX_MAX_STRLEN)))
+                } else if (!memcmp (rxStr, chunk, strnlen (rxStr, RX_TX_MAX_STRLEN)))
                 {
-                    chunk[ strnlen_s (chunk, sizeof (chunk)) - 1 ] = '\0';
+                    chunk[ strnlen (chunk, sizeof (chunk)) - 1 ] = '\0';
 
                     if (commMode == COMM_MODE_XLINK)
                     {
-                        *rx = (uint16_t)strtol (&chunk[strnlen_s (rxStr, RX_TX_MAX_STRLEN)],
+                        *rx = (uint16_t)strtol (&chunk[strnlen (rxStr, RX_TX_MAX_STRLEN)],
 		            (char **)NULL, 16);
                     }
                     else if (commMode == COMM_MODE_TCP)
                     {
-                        *rx = (uint16_t)atoi (&chunk[strnlen_s (rxStr, RX_TX_MAX_STRLEN)]);
+                        *rx = (uint16_t)atoi (&chunk[strnlen (rxStr,RX_TX_MAX_STRLEN)]);
                     }
                 }
             }
         }
 
-        printf ("%-10s : %d\n", txStr, *tx);
-        printf ("%-10s : %d\n", rxStr, *rx);
+        SHIM_NORMAL_MESSAGE ("%-10s : %d\n", txStr, *tx);
+        SHIM_NORMAL_MESSAGE ("%-10s : %d\n", rxStr, *rx);
 
         setenv ("SVE_READ_FLAG", "1", 0); // set SVE_READ_FLAG
     }

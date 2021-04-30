@@ -18,32 +18,28 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-function (FindSafeStringLib)
-
-    if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-        find_library (SAFESTRINGLIB safestring_shared)
-        if (SAFESTRINGLIB)
-		message ("Use system installed safestring: ${SAFESTRINGLIB}")
+function (FindLTTNG)
+	find_library (LTTNG_DL_LIB dl)
+	if (LTTNG_DL_LIB)
+		message ("LTTNG DL Library located at ${LTTNG_DL_LIB}")
 	else ()
-		message ("USE_SYSTEM_SAFESTR is set but safestring not found in system "
-			"installed directories")
-	endif()
-    elseif (DEFINED ENV{SAFESTR_HOME})
-        message ("SafeStringlib Path found: $ENV{SAFESTR_HOME}")
+		message ("Cannot locate LTTNG DL Library")
+        endif ()
 
-        set (SAFESTRINGLIB_SRC_DIR $ENV{SAFESTR_HOME})
-        set (SAFESTRINGLIB_INCLUDE_DIR "${SAFESTRINGLIB_SRC_DIR}/include")
+	find_library (LTTNG_UST_LIB lttng-ust)
+	if (LTTNG_UST_LIB)
+		message ("LTTNG UST Library located at ${LTTNG_UST_LIB}")
+	else ()
+		message ("Cannot locate LTTNG UST Library")
+	endif ()
+endfunction (FindLTTNG)
 
-        include_directories (${SAFESTRINGLIB_INCLUDE_DIR})
-        message ("SafeStringlib include directory: ${SAFESTRINGLIB_INCLUDE_DIR}")
+function (AddARMITT)
+	set (ITT_LIB ${CMAKE_SOURCE_DIR}/thirdparty/itt/arm/lib/libittnotify.a)
+	message ("ITT Library located at ${ITT_LIB}")
+endfunction (AddARMITT)
 
-	set (SAFESTRINGLIB "${SAFESTRINGLIB_SRC_DIR}/build/libsafestring_static.a")
-        message ("safestring library: ${SAFESTRINGLIB}")
-        add_library (libsafestring STATIC IMPORTED GLOBAL)
-        set_target_properties (libsafestring PROPERTIES IMPORTED_LOCATION ${SAFESTRINGLIB})
-
-    else ()
-        message( "SAFESTR_HOME not DEFINED")
-    endif ()
-
-endfunction (FindSafeStringLib)
+function (AddX86ITT)
+	set (ITT_LIB ${CMAKE_SOURCE_DIR}/thirdparty/itt/x86/lib/libittnotify.a)
+	message ("ITT Library located at ${ITT_LIB}")
+endfunction (AddX86ITT)

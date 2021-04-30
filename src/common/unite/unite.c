@@ -77,8 +77,9 @@ XLinkStatus Unite_CheckDeviceEvent (HDDLShimUniteContext *uniteCtx)
 
                 if (unregisterUnite != true)
                 {
-	            //TODO: W/A Temporary remove unregister where the first unregister call will unregister all the
+	            //TODO: W/A Temperary remove unregister where the first unregister call will unregister all the
                     //event on other thread as well.
+                    //HSD filed: https://hsdes.intel.com/resource/1508442210
                     //xLinkStatus = xlink_unregister_device_event (&uniteCtx->xLinkCtx->xLinkHandler,
 		    //    uniteEventList, MAX_XLINK_EVENT);
 
@@ -94,7 +95,7 @@ XLinkStatus Unite_CheckDeviceEvent (HDDLShimUniteContext *uniteCtx)
 #endif
 
 HDDLShimUniteContext *Unite_ContextInit (xLinkChannelId_t channelTX, xLinkChannelId_t channelRX,
-    uint64_t workloadId)
+    uint64_t workloadId, uint32_t swDeviceId)
 {
     HDDLShimUniteContext *uniteCtx = HDDLMemoryMgr_AllocAndZeroMemory (
         sizeof (HDDLShimUniteContext));
@@ -126,7 +127,7 @@ HDDLShimUniteContext *Unite_ContextInit (xLinkChannelId_t channelTX, xLinkChanne
 #if defined (HDDL_UNITE) && defined (IA)
     HddlStatusCode hddlStatus;
     uint64_t workload;
-    uint32_t swDeviceId;
+    uint32_t deviceId = -1;
     ChannelID channelIdList[MAX_XLINK_CHANNELS];
 
     hddlStatus = getWorkloadContextId (getpid (), syscall (SYS_gettid), &workload);
@@ -154,8 +155,8 @@ HDDLShimUniteContext *Unite_ContextInit (xLinkChannelId_t channelTX, xLinkChanne
         uniteCtx->workloadId = workload;
     }
 
-    getSwDeviceId (workload, &swDeviceId);
-    uniteCtx->swDeviceId = swDeviceId;
+    getSwDeviceId (workload, &deviceId);
+    uniteCtx->swDeviceId = deviceId;
 
     hddlStatus = allocateVAChannelId (workload, channelIdList, MAX_XLINK_CHANNELS);
     if (hddlStatus != HDDL_OK)
@@ -305,7 +306,7 @@ CommStatus Unite_Write (HDDLShimUniteContext *uniteCtx, int size, void *payload)
 
     XLinkStatus xLinkStatus = X_LINK_ERROR;
 
-#if defined (HDDL_UNITE) && defined (IA)
+#if defined (HDDL_UNITE) && defined (IA) && defined (KMB)
     int timeoutCount = 0;
     ChannelID channelIdList[MAX_XLINK_CHANNELS];
     channelIdList[0] = uniteCtx->xLinkCtx->xLinkChannelTX;
@@ -315,10 +316,8 @@ CommStatus Unite_Write (HDDLShimUniteContext *uniteCtx, int size, void *payload)
     {
 	HddlStatusCode hddlStatus;
 
-#ifdef KMB
         xLinkStatus = Unite_CheckDeviceEvent (uniteCtx);
         SHIM_CHK_ERROR (xLinkStatus, "XLink Device Down", COMM_STATUS_FAILED);
-#endif
 
         xLinkStatus = XLink_Write (uniteCtx->xLinkCtx, size, payload);
 	SHIM_CHK_EQUAL (xLinkStatus, X_LINK_ERROR, "Failed to write data", COMM_STATUS_FAILED);
@@ -439,8 +438,9 @@ CommStatus Unite_Disconnect (HDDLShimUniteContext *uniteCtx, int flag)
 
 #ifdef KMB
     //Unregister the client from receiving event
-    //TODO: Temporary remove unregister where the first unregister call will unregister all the
+    //TODO: Temperary remove unregister where the first unregister call will unregister all the
     //event on other thread as well.
+    //HSD filed: https://hsdes.intel.com/resource/1508442210
     //
     //if (registerUniteEventCallback == true)
     //{

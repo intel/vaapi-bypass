@@ -135,7 +135,8 @@ XLinkStatus XLink_Initialize (HDDLShimXLinkContext *xLinkCtx, int flag)
         xLinkStatus = xlink_initialize ();
         if (xLinkStatus != X_LINK_SUCCESS)
         {
-            SHIM_ERROR_MESSAGE ("Error initialize xlink pcie device");
+            SHIM_ERROR_MESSAGE ("Error initialize xlink pcie device with XLink status %d",
+		xLinkStatus);
             HDDLMemoryMgr_FreeMemory (xLinkCtx);
             return xLinkStatus;
         }
@@ -147,7 +148,7 @@ XLinkStatus XLink_Initialize (HDDLShimXLinkContext *xLinkCtx, int flag)
 
     if (xLinkStatus != X_LINK_SUCCESS)
     {
-        SHIM_ERROR_MESSAGE ("Error get device list");
+        SHIM_ERROR_MESSAGE ("Error get device list with XLink status %d", xLinkStatus);
         exit (1);
     }
 
@@ -199,7 +200,7 @@ XLinkStatus XLink_Initialize (HDDLShimXLinkContext *xLinkCtx, int flag)
                 xLinkStatus = xlink_boot_device (&xLinkCtx->xLinkHandler, BOOT_LOCAL_HOST_FIP_FILE);
                 if (xLinkStatus != X_LINK_SUCCESS)
                 {
-                    SHIM_ERROR_MESSAGE ("Failed to boot FIP");
+                    SHIM_ERROR_MESSAGE ("Failed to boot FIP with XLink status %d", xLinkStatus);
                     exit (1);
                 }
 
@@ -207,7 +208,8 @@ XLinkStatus XLink_Initialize (HDDLShimXLinkContext *xLinkCtx, int flag)
 		xLinkStatus = xlink_boot_device (&xLinkCtx->xLinkHandler, BOOT_LOCAL_HOST_IMAGE_FILE);
                 if (xLinkStatus != X_LINK_SUCCESS)
                 {
-                    SHIM_ERROR_MESSAGE ("Failed to boot Image file");
+                    SHIM_ERROR_MESSAGE ("Failed to boot Image file with XLink status %d",
+		        xLinkStatus);
                     exit (1);
                 }
 
@@ -219,7 +221,8 @@ XLinkStatus XLink_Initialize (HDDLShimXLinkContext *xLinkCtx, int flag)
         }
         else
         {
-            SHIM_ERROR_MESSAGE ("xlink_get_device_status failed");
+            SHIM_ERROR_MESSAGE ("xlink_get_device_status failed with XLink status %d",
+	        xLinkStatus);
         }
 
     }
@@ -294,39 +297,59 @@ XLinkStatus XLink_Write (HDDLShimXLinkContext *xLinkCtx, int size, void *payload
     {
         SHIM_NORMAL_MESSAGE ("Splitting write data to smaller chunk");
 
-        SHIM_NORMAL_MESSAGE ("[TX channel %d] Attempt to write", xLinkCtx->xLinkChannelTX);
+        SHIM_NORMAL_MESSAGE ("[TX channel %u] Attempt to write", xLinkCtx->xLinkChannelTX);
         xLinkStatus = xlink_write_data (&xLinkCtx->xLinkHandler, xLinkCtx->xLinkChannelTX,
             (uint8_t*)payload, (uint32_t)DATA_MAX_SEND_SIZE);
 
 	if (xLinkStatus != X_LINK_SUCCESS)
 	{
-	    SHIM_ERROR_MESSAGE("DeviceID %u: Failed to write data to the device",
-	        xLinkCtx->xLinkHandler.sw_device_id);
+	    SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to write data to the device "
+                "with XLink status %d", xLinkCtx->xLinkHandler.sw_device_id,
+                xLinkCtx->xLinkChannelTX, xLinkStatus);
 	    return xLinkStatus;
 	}
 
-        SHIM_NORMAL_MESSAGE ("[TX channel %d] Write done", xLinkCtx->xLinkChannelTX);
+        SHIM_NORMAL_MESSAGE ("[TX channel %u] Write done", xLinkCtx->xLinkChannelTX);
 
         writeSize -= DATA_MAX_SEND_SIZE;
         payload += DATA_MAX_SEND_SIZE;
     }
 
+#if defined (XLINK_SECURE)
+    //Workaround as current secureXLink does not support xlink_write_control_data api
+    //TODO: Will re-examine once secureXLink support xlink_write_control data api
+    SHIM_NORMAL_MESSAGE ("[TX channel %u] Attempt to write", xLinkCtx->xLinkChannelTX);
+
+    xLinkStatus = xlink_write_data (&xLinkCtx->xLinkHandler, xLinkCtx->xLinkChannelTX,
+                (uint8_t*)payload, (uint32_t)writeSize);
+
+    if (xLinkStatus != X_LINK_SUCCESS)
+    {
+        SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to write data to the device with "
+            "XLink status %d", xLinkCtx->xLinkHandler.sw_device_id, xLinkCtx->xLinkChannelTX,
+            xLinkStatus);
+        return xLinkStatus;
+    }
+
+    SHIM_NORMAL_MESSAGE ("[TX channel %u] Write done", xLinkCtx->xLinkChannelTX);
+#else
     if (writeSize > 0)
     {
-        SHIM_NORMAL_MESSAGE ("[TX channel %d] Attempt to write", xLinkCtx->xLinkChannelTX);
+        SHIM_NORMAL_MESSAGE ("[TX channel %u] Attempt to write", xLinkCtx->xLinkChannelTX);
 
 	// Use xlink_write_control_data for data size less than 100 bytes since it has less DMA
 	// transfer compare to xlink_write_data. The limit for xlink_write_control_data is 100 bytes.
 	// This is for performance optimization.
 	if (writeSize < 100)
 	{
-            xLinkStatus = xlink_write_control_data (&xLinkCtx->xLinkHandler, xLinkCtx->xLinkChannelTX,
-                (uint8_t*)payload, (uint32_t)writeSize);
+            xLinkStatus = xlink_write_control_data (&xLinkCtx->xLinkHandler,
+                xLinkCtx->xLinkChannelTX, (uint8_t*)payload, (uint32_t)writeSize);
 
 	    if (xLinkStatus != X_LINK_SUCCESS)
             {
-		SHIM_ERROR_MESSAGE("DeviceID %u: Failed to write data to the device",
-		    xLinkCtx->xLinkHandler.sw_device_id);
+		SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to write data to the device "
+                    "with XLink status %d", xLinkCtx->xLinkHandler.sw_device_id,
+                    xLinkCtx->xLinkChannelTX, xLinkStatus);
 		return xLinkStatus;
             }
 	}
@@ -335,16 +358,18 @@ XLinkStatus XLink_Write (HDDLShimXLinkContext *xLinkCtx, int size, void *payload
             xLinkStatus = xlink_write_data (&xLinkCtx->xLinkHandler, xLinkCtx->xLinkChannelTX,
                 (uint8_t*)payload, (uint32_t)writeSize);
 
-	    if (xLinkStatus != X_LINK_SUCCESS)
+            if (xLinkStatus != X_LINK_SUCCESS)
             {
-		SHIM_ERROR_MESSAGE("DeviceID %u: Failed to write data to the device",
-		    xLinkCtx->xLinkHandler.sw_device_id);
+                SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to write data to the device "
+                    "with XLink status %d", xLinkCtx->xLinkHandler.sw_device_id,
+                    xLinkCtx->xLinkChannelTX, xLinkStatus);
                 return xLinkStatus;
-	    }
-	}
-        SHIM_NORMAL_MESSAGE ("[TX channel %d] Write done", xLinkCtx->xLinkChannelTX);
+            }
+        }
+        SHIM_NORMAL_MESSAGE ("[TX channel %u] Write done", xLinkCtx->xLinkChannelTX);
 
     }
+#endif
 
     return xLinkStatus;
 }
@@ -375,10 +400,11 @@ XLinkStatus XLink_Read (HDDLShimXLinkContext *xLinkCtx, int size, void *payload)
         xLinkStatus = xlink_read_data (&xLinkCtx->xLinkHandler, xLinkCtx->xLinkChannelRX,
             (uint8_t **)&payload, &dataSize);
 
-	if (xLinkStatus != X_LINK_SUCCESS)
+        if (xLinkStatus != X_LINK_SUCCESS)
         {
-            SHIM_ERROR_MESSAGE("DeviceID %u: Failed to read data from device",
-	        xLinkCtx->xLinkHandler.sw_device_id);
+            SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to read data from device with "
+                "XLink status %d", xLinkCtx->xLinkHandler.sw_device_id,
+                xLinkCtx->xLinkChannelRX, xLinkStatus);
             return xLinkStatus;
         }
 
@@ -399,8 +425,9 @@ XLinkStatus XLink_Read (HDDLShimXLinkContext *xLinkCtx, int size, void *payload)
 
 	if (xLinkStatus != X_LINK_SUCCESS)
         {
-            SHIM_ERROR_MESSAGE("DeviceID %u: Failed to read data from device",
-	        xLinkCtx->xLinkHandler.sw_device_id);
+            SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to read data from device with "
+                "XLink status %d", xLinkCtx->xLinkHandler.sw_device_id,
+                xLinkCtx->xLinkChannelRX, xLinkStatus);
             return xLinkStatus;
         }
 
@@ -436,8 +463,9 @@ XLinkStatus XLink_Peek (HDDLShimXLinkContext *xLinkCtx, uint32_t *size, void **p
 
     if (xLinkStatus != X_LINK_SUCCESS)
     {
-	SHIM_ERROR_MESSAGE("DeviceID %u: Failed to read data from device",
-	    xLinkCtx->xLinkHandler.sw_device_id);
+	SHIM_ERROR_MESSAGE ("DeviceID %u Channel %u: Failed to read data from device with XLink "
+            "status %d", xLinkCtx->xLinkHandler.sw_device_id,
+            xLinkCtx->xLinkChannelRX, xLinkStatus);
         return xLinkStatus;
     }
 
@@ -478,8 +506,9 @@ XLinkStatus XLink_Disconnect (HDDLShimXLinkContext *xLinkCtx, int flag)
     {
 #ifdef KMB
 	//Unregister the client from receiving event
-	//TODO: Temporary remove unregister where the first unregister call will unregister all the
+	//TODO: Temperary remove unregister where the first unregister call will unregister all the
         //event on other thread as well.
+        //HSD filed: https://hsdes.intel.com/resource/1508442210
         //
 	//if (registerEventCallback == true)
 	//{

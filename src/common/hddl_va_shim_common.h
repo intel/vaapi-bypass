@@ -41,7 +41,6 @@
 #include <stdbool.h>
 #include <X11/Xutil.h>
 #include <linux/fb.h>
-#include <safe_mem_lib.h>
 
 //Include libva
 #include <va/va.h>
@@ -358,5 +357,4 @@ static __inline HDDLVAShimDriverContext *HDDL_GetVAShimContext (VADriverContextP
 }
 
 #endif
-
 //EOF

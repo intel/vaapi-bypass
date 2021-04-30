@@ -37,7 +37,7 @@ pthread_cond_t gCond = PTHREAD_COND_INITIALIZER;
 
 #ifdef HDDL_UNITE
 void HDDLShim_NewWorkloadAvailable (uint64_t workloadId, ChannelID* channelId,
-    uint32_t channelNum)
+    uint32_t channelNum, uint32_t swDeviceID)
 {
     pthread_attr_t threadAttrib;
     pthread_t newThread;
@@ -48,6 +48,7 @@ void HDDLShim_NewWorkloadAvailable (uint64_t workloadId, ChannelID* channelId,
     shimThreadParams->rx = channelId[0];
     shimThreadParams->tx = channelId[1];
     shimThreadParams->workloadId = workloadId;
+    shimThreadParams->swDeviceId = swDeviceID;
     shimThreadParams->commMode = COMM_MODE_UNITE;
 
     SHIM_NORMAL_MESSAGE ("Obtain HDDLUnite Workload ID: %lu XLINK channel %d and %d",
@@ -198,6 +199,8 @@ void MainReceiverListener (HDDLShimCommContext *ctx)
     CommStatus commStatus;
     bool terminate = false;
     uint32_t size = 0;
+    uint32_t peekRetryCount = 0;
+    uint32_t writeRetryCount = 0;
 
     SHIM_PROFILE_INIT ();
 
@@ -241,10 +244,24 @@ void MainReceiverListener (HDDLShimCommContext *ctx)
 
 	    if (commStatus == COMM_STATUS_FAILED)
 	    {
-	        SHIM_ERROR_MESSAGE ("Error peek pcie device");
-		HDDLMemoryMgr_FreeMemory (payload);
-		return;
-	    }
+                peekRetryCount++;
+                SHIM_ERROR_MESSAGE ("Error peek pcie device for %u time(s)", peekRetryCount);
+                HDDLMemoryMgr_FreeMemory (payload);
+
+                if (peekRetryCount == MAX_ERROR_RETRY)
+                {
+                    SHIM_ERROR_MESSAGE ("Failed to peek pcie device for %u consecutive tries. "
+                        "Exiting thread", peekRetryCount);
+                    terminate = true;
+                }
+
+                continue;
+            }
+            else
+            {
+                // Reset retry count upon each success operation
+                peekRetryCount = 0;
+            }
 
             SHIM_CHK_NULL (payload, "payload returned NULL", );
 
@@ -254,7 +271,7 @@ void MainReceiverListener (HDDLShimCommContext *ctx)
             {
                 SHIM_ERROR_MESSAGE ("out of boundary");
                 HDDLMemoryMgr_FreeMemory (payload);
-                return;
+                continue;
             }
 
             size = ( ( (HDDLVAData *)payload)->size);
@@ -283,7 +300,7 @@ void MainReceiverListener (HDDLShimCommContext *ctx)
 	    {
 	        SHIM_ERROR_MESSAGE ("shimThreadParams returned NULL");
 		HDDLMemoryMgr_FreeMemory (payload);
-		return;
+		continue;
 	    }
 
             shimThreadParams->commMode = COMM_MODE (ctx);
@@ -313,19 +330,33 @@ void MainReceiverListener (HDDLShimCommContext *ctx)
 
 	if (vaDataRX == NULL)
 	{
-	    SHIM_ERROR_MESSAGE ("vaDataRX returned NULL");
+            SHIM_ERROR_MESSAGE ("vaDataRX returned NULL");
             HDDLMemoryMgr_FreeMemory (payload);
-	    return;
+            continue;
 	}
 
         // Write back processed result
         commStatus = Comm_Write (ctx, ( (HDDLVAData *)vaDataRX)->size, vaDataRX);
         if (commStatus != COMM_STATUS_SUCCESS)
         {
-            SHIM_ERROR_MESSAGE ("Error write socket");
+            writeRetryCount++;
+            SHIM_ERROR_MESSAGE ("Error write pcie device for %d time(s)", writeRetryCount);
             HDDLMemoryMgr_FreeMemory (vaDataRX);
             HDDLMemoryMgr_FreeMemory (payload);
-            return;
+
+            if (writeRetryCount == MAX_ERROR_RETRY)
+            {
+                SHIM_ERROR_MESSAGE ("Failed to write pcie device for %u consecutive tries. "
+                    "Exiting thread", writeRetryCount);
+                terminate = true;
+            }
+
+            continue;
+        }
+        else
+        {
+            // Reset retry count upon each success operation
+            writeRetryCount = 0;
         }
 
         if (IS_TCP_MODE (ctx))

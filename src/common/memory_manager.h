@@ -168,6 +168,13 @@ void *HDDLMemoryMgr_LockBuffer (HDDLVABuffer *buf);
 //!
 void HDDLMemoryMgr_UnlockBuffer (HDDLVABuffer *buf);
 
+//! \brief    Function to check for buffer overflow before perform memcpy operation
+//! \return   bool
+//!           Return true if buffer not overflow and perform memcpy else return false
+//!           and do nothing
+//!
+void *HDDLMemoryMgr_Memcpy (void *destBuf, const void *srcBuf, size_t destSize,
+    size_t srcSize);
 #endif
 
 //EOF

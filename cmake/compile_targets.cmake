@@ -25,17 +25,20 @@ function (CompileIA)
 	set_target_properties (${HOST_LIB_NAME} PROPERTIES PREFIX "")
 	target_link_libraries (${HOST_LIB_NAME} ${HDDLUNITE_LIB})
 
-	if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-		target_link_libraries (${HOST_LIB_NAME} ${SAFESTRINGLIB})
-	else ()
-		target_link_libraries (${HOST_LIB_NAME} libsafestring)
-	endif ()
-
 	if (DEFINED ENV{XLINK_HOME})
 		target_link_libraries (${HOST_LIB_NAME} libXLinkPC)
         elseif (XLINK_LIB)
 		target_link_libraries (${HOST_LIB_NAME} ${XLINK_LIB})
         endif ()
+
+	if (LTTNG_TRACE)
+		target_link_libraries (${HOST_LIB_NAME} ${LTTNG_DL_LIB})
+		target_link_libraries (${HOST_LIB_NAME} ${LTTNG_UST_LIB})
+	endif()
+
+	if (ITT_TRACE)
+		target_link_libraries (${HOST_LIB_NAME} ${ITT_LIB})
+	endif ()
 
 	install (TARGETS ${HOST_LIB_NAME} DESTINATION ${INSTALL_LIB_DIR})
 
@@ -44,6 +47,7 @@ function (CompileIA)
 			DESTINATION ${CMAKE_INSTALL_PREFIX}/include/va_hantro/
 			PATTERN "*.h")
 	endif ()
+
 endfunction (CompileIA)
 
 function (CompileARM)
@@ -57,17 +61,23 @@ function (CompileARM)
 		${CMAKE_CXX_FLAGS}
 	)
 
-	if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-		set (LINK_LIBS ${LINK_LIBS} ${SAFESTRINGLIB})
-	else ()
-		set (LINK_LIBS ${LINK_LIBS} libsafestring)
-	endif ()
-
 	if (DEFINED ENV{XLINK_HOME})
 		set (LINK_LIBS ${LINK_LIBS} libXLinkARM)
 	elseif (XLINK_LIB)
 		set (LINK_LIBS ${LINK_LIBS} ${XLINK_LIB})
         endif ()
+
+	if (LTTNG_TRACE)
+		target_link_libraries (${DEVICE_BIN_NAME} ${LTTNG_DL_LIB})
+		target_link_libraries (${DEVICE_BIN_NAME} ${LTTNG_UST_LIB})
+		target_link_libraries (${DEVICE_LIB_NAME} ${LTTNG_DL_LIB})
+		target_link_libraries (${DEVICE_LIB_NAME} ${LTTNG_UST_LIB})
+	endif()
+
+	if (ITT_TRACE)
+		target_link_libraries (${DEVICE_BIN_NAME} ${ITT_LIB})
+		target_link_libraries (${DEVICE_LIB_NAME} ${ITT_LIB})
+	endif ()
 
 	target_link_libraries (${DEVICE_BIN_NAME} ${LINK_LIBS})
 	target_link_libraries (${DEVICE_LIB_NAME} ${LINK_LIBS})
