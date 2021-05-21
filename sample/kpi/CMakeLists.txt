@@ -21,7 +21,6 @@
 cmake_minimum_required (VERSION 3.5)
 project (sample)
 include (FindPkgConfig)
-include (${CMAKE_SOURCE_DIR}/../../cmake/safestringlib_include.cmake)
 
 option (DEBUG "Turn on debug build." OFF)
 
@@ -33,8 +32,6 @@ if (GLIB_FOUND)
 else ()
     message ("Failed to find GLib")
 endif ()
-
-FindSafeStringLib()
 
 # Find GStreamer
 pkg_check_modules (GSTREAMER REQUIRED gstreamer-1.0>=1.16)
@@ -59,18 +56,7 @@ set (PIPELINE_APP "gstPipelinePerf")
 add_executable (${PIPELINE_APP} ${PIPELINE_APP}.c)
 target_link_libraries (${PIPELINE_APP} ${LINK_LIBS})
 
-if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-    target_link_libraries(${PIPELINE_APP} ${SAFESTRINGLIB})
-else ()
-    target_link_libraries(${PIPELINE_APP} libsafestring)
-endif ()
-
 set (CROPROI_APP "cropRoiPipelinePerf")
 add_executable (${CROPROI_APP} ${CROPROI_APP}.c)
 target_link_libraries (${CROPROI_APP} ${LINK_LIBS})
 
-if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-    target_link_libraries(${CROPROI_APP} ${SAFESTRINGLIB})
-else ()
-    target_link_libraries(${CROPROI_APP} libsafestring)
-endif ()

@@ -30,10 +30,11 @@
 
 #include "gstbypass.h"
 
-#include <WorkloadContextC.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/syscall.h>
+#include <gst/gststructure.h>
+#include <gst/gstquery.h>
 
 /* FIXME* update PACKAGE_ORIGIN after opened source */
 #define PACKAGE_ORIGIN "http://www.intel.com"
@@ -67,39 +68,79 @@ static GstFlowReturn gst_bypass_chain (GstPad *pad, GstObject *parent, GstBuffer
     gst_pad_push (bypass->srcpad, buf);
 }
 
+static gboolean gst_bypass_query (GstPad *pad, GstObject *parent, GstQuery *query)
+{
+    gboolean ret = FALSE;
+    GstBypass *bypass = GST_BYPASS (parent);
+
+    switch (GST_QUERY_TYPE (query))
+    {
+        case GST_QUERY_CUSTOM:
+            {
+                GST_DEBUG ("Received custom query");
+                GstStructure *queryStruct = gst_query_writable_structure (query);
+                const gchar *queryType = gst_structure_get_string (queryStruct, "BypassQueryType");
+
+                if (queryType != NULL && g_str_equal (queryType, "WorkloadContextQuery"))
+                {
+                    WorkloadID workloadId = bypass->workloadId;
+
+                    if (workloadId == WORKLOAD_ID_INVALID)
+                    {
+                        GST_ERROR ("Failed to query workload id\n");
+                    }
+
+                    gst_structure_set (queryStruct, "WorkloadContextId", G_TYPE_UINT64,
+                        (guint64)workloadId, NULL);
+		    ret = TRUE;
+	        }
+            }
+            break;
+        default:
+	    GST_DEBUG ("Received default query");
+            ret = gst_pad_query_default (pad, parent, query);
+            break;
+    }
+
+    return ret;
+}
+
 static void gst_bypass_finalize (GObject *object)
 {
-    GST_DEBUG ("pid %u tid %lu\n", getpid(), syscall (SYS_gettid));
     WorkloadID workloadId;
     HddlStatusCode hddlStatus = HDDL_OK;
+    uint32_t pid = getpid();
+    uint64_t tid = syscall (SYS_gettid);
 
-    hddlStatus = getWorkloadContextId (getpid (), syscall (SYS_gettid), &workloadId);
+    GST_DEBUG ("[%u][%lu]", pid, tid);
+    hddlStatus = getWorkloadContextId (pid, tid, &workloadId);
 
     if (hddlStatus != HDDL_OK)
     {
-        GST_ERROR ("Failed to obtain workload %ld\n", workloadId);
+        GST_ERROR ("[%u][%lu] Failed to obtain workload %ld\n", pid, tid, workloadId);
     }
 
     destroyWorkloadContext (workloadId);
 
-    GST_DEBUG ("Destroyed workload %lu with pid %u tid %lu\n", workloadId, getpid(),
-	syscall (SYS_gettid));
+    GST_DEBUG ("[%u][%lu] Destroyed workload %lu", pid, tid, workloadId);
 
     G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static void gst_bypass_dispose (GObject *object)
 {
-    GST_DEBUG ("pid %u tid %lu\n", getpid(), syscall (SYS_gettid));
+    GST_DEBUG ("[%u][%lu]", getpid(), syscall (SYS_gettid));
 
     G_OBJECT_CLASS (parent_class)->dispose (object);
 }
 
-static void gst_bypass_workload_init ()
+static WorkloadID gst_bypass_workload_init ()
 {
-    WorkloadID workloadId;
-    ContextHint contextHint;
+    WorkloadID workloadId = WORKLOAD_ID_INVALID;
+    ContextHint contextHint = {0};
     HddlStatusCode hddlStatus = HDDL_OK;
+    uint32_t pid = getpid();
+    uint64_t tid = syscall (SYS_gettid);
 
     // FIXME: Hardcoded context hint. Fix it later.
     contextHint.mediaDecodeType = MEDIA_DECODE_TYPE_H264;
@@ -109,25 +150,34 @@ static void gst_bypass_workload_init ()
     contextHint.mediaFps = 29.7;
     contextHint.internalWorkload = 0;
 
-    hddlStatus = getWorkloadContextId (getpid (), syscall (SYS_gettid), &workloadId);
+    hddlStatus = getWorkloadContextId (pid, tid, &workloadId);
 
     if (hddlStatus != HDDL_OK)
     {
+        GST_DEBUG ("[%u][%lu] Failed to obtain existing workload id. Creating new workload id",
+            pid, tid);
+
         hddlStatus = createWorkloadContext (&workloadId, &contextHint);
 
         if (hddlStatus != HDDL_OK)
         {
-	    GST_ERROR ("Failed to create workload context\n");
+	    GST_ERROR ("[%u][%lu] Failed to create workload context\n", pid, tid);
+	    return WORKLOAD_ID_INVALID;
         }
 
-        GST_DEBUG ("Created workload %lu with pid %u tid %lu\n", workloadId, getpid(),
-	    syscall (SYS_gettid));
+        GST_DEBUG ("[%u][%lu] Created workload %lu", pid, tid, workloadId);
     }
+    else
+    {
+        GST_DEBUG ("[%u][%lu] Obtained workload %lu", pid, tid, workloadId);
+    }
+
+    return workloadId;
 }
 
 static void gst_bypass_class_init (GstBypassClass *klass)
 {
-    GST_DEBUG ("pid %u tid %lu\n", getpid(), syscall (SYS_gettid));
+    GST_DEBUG ("[%u][%lu]", getpid(), syscall (SYS_gettid));
     gst_bypass_workload_init ();
 
     GObjectClass *const gobjectClass = G_OBJECT_CLASS (klass);
@@ -148,29 +198,30 @@ static void gst_bypass_class_init (GstBypassClass *klass)
 
 static void gst_bypass_init (GstBypass *bypass)
 {
-    GST_DEBUG ("pid %u tid %lu\n", getpid(), syscall (SYS_gettid));
-    gst_bypass_workload_init ();
+    GST_DEBUG ("[%u][%lu]", getpid(), syscall (SYS_gettid));
+    bypass->workloadId = gst_bypass_workload_init ();
 
     bypass->sinkpad = gst_pad_new_from_static_template (&sink_factory, "sink");
     gst_pad_set_chain_function (bypass->sinkpad, gst_bypass_chain);
     GST_PAD_SET_PROXY_CAPS (bypass->sinkpad);
     gst_element_add_pad (GST_ELEMENT (bypass), bypass->sinkpad);
+    gst_pad_set_query_function (bypass->sinkpad, gst_bypass_query);
 
     bypass->srcpad = gst_pad_new_from_static_template (&src_factory, "src");
     GST_PAD_SET_PROXY_CAPS (bypass->srcpad);
     gst_element_add_pad (GST_ELEMENT (bypass), bypass->srcpad);
+    gst_pad_set_query_function (bypass->srcpad, gst_bypass_query);
 }
 
 
 static gboolean bypass_plugin_init (GstPlugin *plugin)
 {
-
     gboolean ret = FALSE;
     GST_DEBUG_CATEGORY_INIT (gst_bypass_debug, GST_PLUGIN_NAME, 0, GST_PLUGIN_DESC);
 
     ret = gst_element_register (plugin, "bypass", GST_RANK_NONE, GST_TYPE_BYPASS);
 
-    GST_DEBUG ("pid %u tid %lu\n", getpid(), syscall (SYS_gettid));
+    GST_DEBUG ("[%u][%lu]", getpid(), syscall (SYS_gettid));
     gst_bypass_workload_init ();
 
     return ret;

@@ -212,10 +212,10 @@ int main (int argc, char *argv[])
 
     for (int i=0; i < numThreads; i++)
     {
-        gchar *codec = malloc (sizeof (gchar) * (strnlen_s (argv[1], CODEC_MAX_STRLEN)));
+	gchar *codec = malloc (sizeof (gchar) * (strnlen (argv[1], CODEC_MAX_STRLEN)));
         gchar *outputName = malloc (sizeof (gchar) *
-	     (strnlen_s (argv[3], OUTPUTNAME_MAX_STRLEN) + 7));
-        gchar *format = malloc (sizeof (gchar) * (strnlen_s (argv[6], FORMAT_MAX_STRLEN)));
+	    (strnlen (argv[3], OUTPUTNAME_MAX_STRLEN) + 7));
+        gchar *format = malloc (sizeof (gchar) * (strnlen (argv[6], FORMAT_MAX_STRLEN)));
 
         sprintf (codec, "%s", argv[1]);
 

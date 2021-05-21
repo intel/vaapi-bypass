@@ -32,6 +32,7 @@
 #define GST_BYPASS_H
 
 #include <gst/gst.h>
+#include <WorkloadContextC.h>
 
 G_BEGIN_DECLS
 
@@ -49,11 +50,14 @@ GstBypassClass))
 typedef struct _GstBypass GstBypass;
 typedef struct _GstBypassClass GstBypassClass;
 
+#define WORKLOAD_ID_INVALID -1
+
 struct _GstBypass
 {
   GstElement element;
   GstPad *sinkpad;
   GstPad *srcpad;
+  WorkloadID workloadId;
 };
 
 struct _GstBypassClass

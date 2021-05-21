@@ -34,21 +34,29 @@
 //------------------------------------------------------------------------------
 // Macros for debug messages, Assert, Null check and condition check within hddl2 vaapi files
 //------------------------------------------------------------------------------
-#define SHIM_ERROR_MESSAGE(fmt, ...) \
-    fprintf (stderr, "[%u][%lu] error: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
+#define SHIM_ERROR_MESSAGE(fmt, ...)		\
+{						\
+    struct timeval shimTime;			\
+    gettimeofday (&shimTime, NULL);		\
+    int millisec = shimTime.tv_usec / 1000;	\
+    char outputTime[100];        		\
+    strftime (outputTime, sizeof (outputTime), "%H:%M:%S", localtime (&shimTime.tv_sec));	\
+    fprintf (stderr, "[%s:%04d][%u][%lu] SHIM error: " fmt "\n", outputTime, millisec,	\
+        getpid (), syscall (SYS_gettid), ##__VA_ARGS__);	\
+}
 
 #ifdef DEBUG
 
 // Print log for compile process
 #define SHIM_INFO_MESSAGE(fmt, ...) \
-    printf ("[%u][%lu] info: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
+    printf ("[%u][%lu] SHIM info: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
 
 // Print log for compile error
 #define SHIM_ASSERT_MESSAGE(fmt, ...) \
-    printf ("[%u][%lu] error: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
+    printf ("[%u][%lu] SHIM error: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
 
 #define SHIM_NORMAL_MESSAGE(fmt, ...) \
-    printf ("[%u][%lu] " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
+    printf ("[%u][%lu] SHIM message: " fmt "\n", getpid (), syscall (SYS_gettid), ##__VA_ARGS__)
 
 #if defined(FUNCTION_TIME_PROFILE) || defined(COMM_TIME_PROFILE)
 #define PROF_NAME "vaapi_bypass_prof"
