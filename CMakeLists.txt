@@ -28,7 +28,6 @@ include(FindPkgConfig)
 include (${CMAKE_SOURCE_DIR}/cmake/libva_include.cmake)
 include (${CMAKE_SOURCE_DIR}/cmake/compile_targets.cmake)
 include (${CMAKE_SOURCE_DIR}/cmake/xlink_include.cmake)
-include (${CMAKE_SOURCE_DIR}/cmake/safestringlib_include.cmake)
 include (${CMAKE_SOURCE_DIR}/cmake/hddlunite_include.cmake)
 
 option (DEBUG "Turn on debug build." OFF)
@@ -67,14 +66,13 @@ if (COMM_TIME_PROFILE)
 endif ()
 
 FindLibva (LIBVA_LIBRARIES)
-FindSafeStringLib ()
 FindHDDLUnite ()
 FindXLink ()
 
 if (CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.9)
-        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -std=gnu99 -Wall -fPIE -fstack-protector-strong")
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -std=gnu99 -Wall -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2")
 else ()
-        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -std=gnu99 -Wall -fPIE -fstack-protector")
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -std=gnu99 -Wall -fPIE -fstack-protector -D_FORTIFY_SOURCE=2")
 endif ()
 
 set (COMM_SOURCES
@@ -89,7 +87,7 @@ if (USE_HANTRO_DRIVER STREQUAL "KMB")
         include_directories (src/ext/va_hantro_kmb)
         message ("Adding KMB hantro driver header")
 else ()
-        message ("-- Not using hantro driver header! --")
+        message ("--- Not using hantro driver header! ---")
 endif ()
 
 include_directories (
@@ -129,7 +127,7 @@ set (TARGET_LIB_SOURCES
     ./src/target/target_shim_entry.c
 )
 
-SET (CMAKE_CXX_FLAGS "-pthread -lva-drm")
+SET (CMAKE_CXX_FLAGS "-pthread -lva-drm -Wl,-unresolved-symbols=ignore-in-shared-libs")
 SET (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS}" )
 
 

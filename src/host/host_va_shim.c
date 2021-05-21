@@ -166,10 +166,9 @@ VAStatus HDDLVAShim_DriverInit (VADriverContextP ctx)
         return VA_STATUS_SUCCESS;
     }
 
-    vaShimCtx = HDDLMemoryMgr_AllocMemory (sizeof (HDDLVAShimDriverContext));
+    vaShimCtx = HDDLMemoryMgr_AllocAndZeroMemory (sizeof (HDDLVAShimDriverContext));
     SHIM_CHK_NULL (vaShimCtx, "Failed to create SHIM context",
         VA_STATUS_ERROR_ALLOCATION_FAILED);
-    memset_s (vaShimCtx, sizeof (HDDLVAShimDriverContext), 0);
 
     commCtx = HDDLVAShim_CommContextSetup (vaShimCtx, getpid (), syscall (SYS_gettid),
         MAIN_COMM_CONTEXT);
@@ -221,10 +220,11 @@ VAStatus HDDLVAShim_DriverInit (VADriverContextP ctx)
     ctx->max_image_formats = vaDataRX.max_image_formats;
     ctx->max_subpic_formats = vaDataRX.max_subpic_formats;
     ctx->max_display_attributes = vaDataRX.max_display_attributes;
-    ctx->str_vendor = HDDLMemoryMgr_AllocMemory (strnlen_s (vaDataRX.str_vendor,
-        STR_VENDOR_MAX_STRLEN));
-    memcpy_s ( (void *)ctx->str_vendor,strnlen_s (vaDataRX.str_vendor, STR_VENDOR_MAX_STRLEN),
-        &vaDataRX.str_vendor, strnlen_s (vaDataRX.str_vendor, STR_VENDOR_MAX_STRLEN));
+    ctx->str_vendor = HDDLMemoryMgr_AllocAndZeroMemory (strnlen (vaDataRX.str_vendor,
+        STR_VENDOR_MAX_STRLEN) + 1);
+    HDDLMemoryMgr_Memcpy ( (void *)ctx->str_vendor, &vaDataRX.str_vendor,
+        strnlen (vaDataRX.str_vendor, STR_VENDOR_MAX_STRLEN),
+	strnlen (vaDataRX.str_vendor, STR_VENDOR_MAX_STRLEN));
 
     // Init heap
     HDDLVAShim_HeapInit (vaShimCtx);
@@ -404,7 +404,7 @@ VAStatus HDDLVAShim_CreateConfig (VADriverContextP ctx, VAProfile profile, VAEnt
     vaDataFullTX.vaDataTX.numAttrib = numAttrib;
 
     // Copy the actual attribute list
-    memcpy_s (vaDataFullTX.attribList, sizeof (VAConfigAttrib) * numAttrib, attrib_list,
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.attribList, attrib_list, sizeof (vaDataFullTX.attribList),
         sizeof (VAConfigAttrib) * numAttrib);
 
     commStatus = Comm_Submission (commCtx, HDDLVACreateConfig, COMM_READ_FULL,
@@ -501,8 +501,8 @@ VAStatus HDDLVAShim_CreateContext (VADriverContextP ctx, VAConfigID configId,
     vaDataFullTX.vaDataTX.numRenderTarget = numRenderTarget;
 
     // Copy the render_target
-    memcpy_s (vaDataFullTX.renderTargets, sizeof (VASurfaceID) * numRenderTarget, render_targets,
-        sizeof (VASurfaceID) * numRenderTarget);
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.renderTargets, render_targets,
+        sizeof (vaDataFullTX.renderTargets), sizeof (VASurfaceID) * numRenderTarget);
 
     commStatus = Comm_Submission (commCtx, HDDLVACreateContext, COMM_READ_FULL,
         sizeof (HDDLVADataFullTX), (void *)&vaDataFullTX,
@@ -610,8 +610,8 @@ VAStatus HDDLVAShim_CreateSurfaces (VADriverContextP ctx, int width, int height,
     }
 
     vaStatus = vaDataFullRX.vaDataRX.ret;
-    memcpy_s (surfaces, sizeof (VASurfaceID) * numSurfaces, vaDataFullRX.surfaces,
-        sizeof (VASurfaceID) * numSurfaces);
+    HDDLMemoryMgr_Memcpy (surfaces, vaDataFullRX.surfaces, sizeof (VASurfaceID) * numSurfaces,
+        sizeof (vaDataFullRX.surfaces));
 
     SHIM_FUNCTION_EXIT ();
     return vaStatus;
@@ -647,7 +647,7 @@ VAStatus HDDLVAShim_DestroySurfaces (VADriverContextP ctx, VASurfaceID *surfaceL
     vaDataFullTX.vaDataTX.numSurfaces = numSurfaces;
 
     // Copy the surface list
-    memcpy_s (vaDataFullTX.surfaces, sizeof (VASurfaceID) * numSurfaces, surfaceList,
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.surfaces, surfaceList, sizeof (vaDataFullTX.surfaces),
         sizeof (VASurfaceID) * numSurfaces);
 
     commStatus = Comm_Submission (commCtx, HDDLVADestroySurfaces, COMM_READ_FULL,
@@ -712,7 +712,7 @@ VAStatus HDDLVAShim_CreateBuffer (VADriverContextP ctx, VAContextID context, VAB
     // Data might be NULL. Copy data only when it's not null to avoid segfault
     if (data)
     {
-        memcpy_s (vaDataFullTX.data, sizeof (unsigned char) * numElement * size, data,
+        HDDLMemoryMgr_Memcpy (vaDataFullTX.data, data, sizeof (vaDataFullTX.data),
             sizeof (unsigned char) * numElement * size);
     }
 
@@ -880,7 +880,8 @@ VAStatus HDDLVAShim_MapBuffer (VADriverContextP ctx, VABufferID bufId, void **bu
                 return vaStatus;
             }
 
-            memcpy_s (vaBuffer->pData, dataSize, vaDataFullRX->data, dataSize);
+            HDDLMemoryMgr_Memcpy (vaBuffer->pData, vaDataFullRX->data,
+	        vaBuffer->uiSize * vaBuffer->uiNumElement, dataSize);
 
             HDDLMemoryMgr_FreeMemory (vaDataFullRX);
 	}
@@ -992,12 +993,13 @@ VAStatus HDDLVAShim_MapBuffer (VADriverContextP ctx, VABufferID bufId, void **bu
 		    return VA_STATUS_ERROR_UNKNOWN;
 		}
 
-                memcpy_s (segment, sizeof (VACodedBufferSegment),
-                    (void *) (vaDataFullRX->segment + i), sizeof (VACodedBufferSegment));
+                HDDLMemoryMgr_Memcpy (segment, (void *) (vaDataFullRX->segment + i),
+                    sizeof (VACodedBufferSegment), sizeof (vaDataFullRX->segment));
 
                 unsigned char *data = HDDLMemoryMgr_AllocMemory (
                     sizeof (unsigned char) * segment->size);
-                memcpy_s (data, segment->size, (void *) (vaDataFullRX->data + offset), segment->size);
+                HDDLMemoryMgr_Memcpy (data, (void *) (vaDataFullRX->data + offset),
+		    sizeof (unsigned char) * segment->size, sizeof (vaDataFullRX->data));
 
                 offset += segment->size;
                 segment->next = NULL;
@@ -1086,7 +1088,8 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
         uint32_t numAdditionalOutputs = pipelineParam->num_additional_outputs;
 
         dataSize = vaBuffer->uiSize * vaBuffer->uiNumElement +
-            (sizeof (VARectangle) * numAdditionalOutputs) * (sizeof (VASurfaceID) * numAdditionalOutputs);
+            (sizeof (VARectangle) * numAdditionalOutputs) +
+	    (sizeof (VASurfaceID) * numAdditionalOutputs);
     }
     else
     {
@@ -1107,7 +1110,7 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
 	return VA_STATUS_ERROR_UNKNOWN;
     }
 
-    memset_s (vaDataFullTX->data, sizeof (unsigned char) * dataSize, 0);
+    HDDLMemoryMgr_ZeroMemory (vaDataFullTX->data, sizeof (unsigned char) * dataSize);
 
     vaDataFullTX->vaDataTX.vaData.vaFunctionID = HDDLVAUnmapBuffer;
     vaDataFullTX->vaDataTX.vaData.size = sizeof (HDDLVADataFullTX);
@@ -1127,12 +1130,13 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
                 VAEncMiscParameterBufferROI *misc_roi_param = (VAEncMiscParameterBufferROI *)misc_param->data;
                 VAEncROI *region_roi = (VAEncROI *)misc_roi_param->roi;
 
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (VAEncMiscParameterBufferROI),
-                    misc_roi_param, sizeof (VAEncMiscParameterBufferROI));
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), misc_roi_param,
+		    sizeof (vaDataFullTX->data) - offset, sizeof (VAEncMiscParameterBufferROI));
 
                 offset += sizeof (VAEncMiscParameterBufferROI);
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (VAEncROI),
-                    region_roi, sizeof (VAEncROI));
+
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), region_roi,
+		    sizeof (vaDataFullTX->data) - offset, sizeof (VAEncROI));
                 break;
             }
 
@@ -1142,9 +1146,9 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
                 HANTROEncMiscParameterBufferEmbeddedPreprocess *misc_prp_param =
                     (HANTROEncMiscParameterBufferEmbeddedPreprocess *)misc_param->data;
 
-                memcpy_s ( (void *) (vaDataFullTX->data + offset),
-                    sizeof (HANTROEncMiscParameterBufferEmbeddedPreprocess), misc_prp_param,
-                    sizeof (HANTROEncMiscParameterBufferEmbeddedPreprocess));
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), misc_prp_param,
+                    sizeof (vaDataFullTX->data) - offset,
+		    sizeof (HANTROEncMiscParameterBufferEmbeddedPreprocess));
                 break;
             }
             case HANTROEncMiscParameterTypeROI:
@@ -1152,12 +1156,14 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
                 HANTROEncMiscParameterBufferROI *misc_roi_param = (HANTROEncMiscParameterBufferROI *)misc_param->data;
                 HANTROEncROI *region_roi = (HANTROEncROI *)misc_roi_param->roi;
 
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (HANTROEncMiscParameterBufferROI),
-                    misc_roi_param, sizeof (HANTROEncMiscParameterBufferROI));
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), misc_roi_param,
+		    sizeof (vaDataFullTX->data) - offset, sizeof (HANTROEncMiscParameterBufferROI));
 
                 offset += sizeof (HANTROEncMiscParameterBufferROI);
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (HANTROEncROI) * misc_roi_param->num_roi,
-                    region_roi, sizeof (HANTROEncROI) * misc_roi_param->num_roi);
+
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), region_roi,
+		    sizeof (vaDataFullTX->data) - offset,
+		    sizeof (HANTROEncROI) * misc_roi_param->num_roi);
                 break;
             }
             case HANTROEncMiscParameterTypeIPCM:
@@ -1165,45 +1171,50 @@ VAStatus HDDLVAShim_UnmapBuffer (VADriverContextP ctx, VABufferID bufId)
                 HANTROEncMiscParameterBufferIPCM *misc_ipcm_param = (HANTROEncMiscParameterBufferIPCM *)misc_param->data;
                 HANTRORectangle *region_ipcm = (HANTRORectangle *)misc_ipcm_param->ipcm;
 
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (HANTROEncMiscParameterBufferIPCM),
-                    misc_ipcm_param, sizeof (HANTROEncMiscParameterBufferIPCM));
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), misc_ipcm_param,
+		    sizeof (vaDataFullTX->data) - offset,
+		    sizeof (HANTROEncMiscParameterBufferIPCM));
 
                 offset += sizeof (HANTROEncMiscParameterBufferIPCM);
-                memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm,
-                    region_ipcm, sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm);
+                HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), region_ipcm,
+		    sizeof (vaDataFullTX->data) - offset,
+		    sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm);
                 break;
             }
 
 #endif
             default:
             {
-                memcpy_s (vaDataFullTX->data, dataSize, vaBuffer->pData, dataSize);
+                HDDLMemoryMgr_Memcpy (vaDataFullTX->data, vaBuffer->pData,
+		    sizeof (vaDataFullTX->data), dataSize);
                 break;
             }
         }
     }
     else if (vaBuffer->type == VAProcPipelineParameterBufferType)
     {
-        VAProcPipelineParameterBuffer *pipelineParam = (VAProcPipelineParameterBuffer *)vaBuffer->pData;
+        VAProcPipelineParameterBuffer *pipelineParam =
+	    (VAProcPipelineParameterBuffer *)vaBuffer->pData;
         VARectangle *surfaceRegion = (VARectangle *)pipelineParam->surface_region;
         VASurfaceID *additionalOutputs = pipelineParam->additional_outputs;
         uint32_t numAdditionalOutputs = pipelineParam->num_additional_outputs;
         unsigned int offset = sizeof (VAProcPipelineParameterBuffer);
 
-        memcpy_s ( (void *) (vaDataFullTX->data), sizeof (VAProcPipelineParameterBuffer),
-            pipelineParam, sizeof (VAProcPipelineParameterBuffer));
+        HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data), pipelineParam,
+	    sizeof (vaDataFullTX->data), sizeof (VAProcPipelineParameterBuffer));
 
-        memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (VARectangle) * numAdditionalOutputs,
-            surfaceRegion, sizeof (VARectangle) * numAdditionalOutputs);
+        HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), surfaceRegion,
+	    sizeof (vaDataFullTX->data) - offset, sizeof (VARectangle) * numAdditionalOutputs);
 
         offset += (sizeof (VARectangle) * numAdditionalOutputs);
-        memcpy_s ( (void *) (vaDataFullTX->data + offset), sizeof (VASurfaceID) * numAdditionalOutputs,
-            additionalOutputs, sizeof (VASurfaceID) * numAdditionalOutputs);
+        HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullTX->data + offset), additionalOutputs,
+	    sizeof (vaDataFullTX->data) - offset, sizeof (VASurfaceID) * numAdditionalOutputs);
     }
-    // Do not perform memcpy_s when it's VAEncCodedBufferType
+    // Do not perform HDDLMemoryMgr_Memcpy when it's VAEncCodedBufferType
     else if (vaBuffer->type != VAEncCodedBufferType)
     {
-        memcpy_s (vaDataFullTX->data, dataSize, vaBuffer->pData, dataSize);
+        HDDLMemoryMgr_Memcpy (vaDataFullTX->data, vaBuffer->pData,
+	    sizeof (vaDataFullTX->data), dataSize);
     }
 
     commStatus = Comm_Submission (commCtx, HDDLVAUnmapBuffer, COMM_READ_FULL,
@@ -1294,7 +1305,7 @@ VAStatus HDDLVAShim_CreateImage (VADriverContextP ctx, VAImageFormat *format, in
     vaImg = (VAImage *)HDDLMemoryMgr_AllocAndZeroMemory (sizeof (VAImage));
     SHIM_CHK_NULL (vaImg, "vaImg returned NULL", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
-    memcpy_s (vaImg, sizeof (VAImage), image, sizeof (VAImage));
+    HDDLMemoryMgr_Memcpy (vaImg, image, sizeof (VAImage), sizeof (vaDataRX.image));
 
     HDDLThreadMgr_LockMutex (&vaShimCtx->imageMutex);
 
@@ -1368,7 +1379,7 @@ VAStatus HDDLVAShim_DeriveImage (VADriverContextP ctx, VASurfaceID surface, VAIm
     vaImg = (VAImage *)HDDLMemoryMgr_AllocAndZeroMemory (sizeof (VAImage));
     SHIM_CHK_NULL (vaImg, "vaImg returned NULL", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
-    memcpy_s (vaImg, sizeof (VAImage), image, sizeof (VAImage));
+    HDDLMemoryMgr_Memcpy (vaImg, image, sizeof (VAImage), sizeof (vaDataRX.image));
 
     HDDLThreadMgr_LockMutex (&vaShimCtx->imageMutex);
 
@@ -1536,8 +1547,8 @@ VAStatus HDDLVAShim_RenderPicture (VADriverContextP ctx, VAContextID context, VA
     vaDataFullTX.vaDataTX.vaData.size = sizeof (HDDLVADataFullTX);
     vaDataFullTX.vaDataTX.context = context;
     vaDataFullTX.vaDataTX.numBuffer = numBuffer;
-    memcpy_s (vaDataFullTX.buffer, sizeof (VABufferID) * numBuffer, buffer,
-        sizeof (VABufferID) * numBuffer);
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.buffer, buffer, sizeof (vaDataFullTX.buffer),
+	sizeof (VABufferID) * numBuffer);
 
     commStatus = Comm_Submission (commCtx, HDDLVARenderPicture, COMM_READ_FULL,
         sizeof (HDDLVADataFullTX), (void *)&vaDataFullTX,
@@ -1729,8 +1740,8 @@ VAStatus HDDLVAShim_QueryConfigProfiles (VADriverContextP ctx, VAProfile *profil
 
     vaStatus = vaDataFullRX->vaDataRX.ret;
     *numProfile = vaDataFullRX->vaDataRX.numProfile;
-    memcpy_s (profileList, sizeof (VAProfile) * (*numProfile), &vaDataFullRX->profileList,
-        sizeof (VAProfile) * (*numProfile));
+    HDDLMemoryMgr_Memcpy (profileList, &vaDataFullRX->profileList, sizeof (VAProfile) * (*numProfile),
+        sizeof (vaDataFullRX->profileList));
 
     HDDLMemoryMgr_FreeMemory (vaDataFullRX);
 
@@ -1838,8 +1849,8 @@ VAStatus HDDLVAShim_QueryConfigEntrypoints (VADriverContextP ctx, VAProfile prof
 
     vaStatus = vaDataFullRX->vaDataRX.ret;
     *numEntrypoint  = vaDataFullRX->vaDataRX.numEntrypoint;
-    memcpy_s (entrypointList, sizeof (VAEntrypoint) * (*numEntrypoint),
-        &vaDataFullRX->entrypointList, sizeof (VAEntrypoint) * (*numEntrypoint));
+    HDDLMemoryMgr_Memcpy (entrypointList, &vaDataFullRX->entrypointList,
+        sizeof (VAEntrypoint) * (*numEntrypoint), sizeof (vaDataFullRX->entrypointList));
 
     HDDLMemoryMgr_FreeMemory (vaDataFullRX);
 
@@ -1875,7 +1886,7 @@ VAStatus HDDLVAShim_GetConfigAttributes (VADriverContextP ctx, VAProfile profile
     vaDataFullTX.vaDataTX.profile = profile;
     vaDataFullTX.vaDataTX.entrypoint = entrypoint;
     vaDataFullTX.vaDataTX.numAttrib = numAttrib;
-    memcpy_s (vaDataFullTX.attribList, sizeof (VAConfigAttrib) * numAttrib, attribList,
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.attribList, attribList, sizeof (vaDataFullTX.attribList),
         sizeof (VAConfigAttrib) * numAttrib);
 
     typedef struct {
@@ -1896,8 +1907,8 @@ VAStatus HDDLVAShim_GetConfigAttributes (VADriverContextP ctx, VAProfile profile
     }
 
     vaStatus = vaDataFullRX.vaDataRX.ret;
-    memcpy_s (attribList, sizeof (VAConfigAttrib) * numAttrib, vaDataFullRX.attribList,
-        sizeof (VAConfigAttrib) * numAttrib);
+    HDDLMemoryMgr_Memcpy (attribList, vaDataFullRX.attribList, sizeof (VAConfigAttrib) * numAttrib,
+        sizeof (vaDataFullRX.attribList));
 
     SHIM_FUNCTION_EXIT ();
     return vaStatus;
@@ -2004,8 +2015,8 @@ VAStatus HDDLVAShim_QueryConfigAttributes (VADriverContextP ctx, VAConfigID conf
     *profile = vaDataFullRX->vaDataRX.profile;
     *entrypoint = vaDataFullRX->vaDataRX.entrypoint;
     *numAttrib= vaDataFullRX->vaDataRX.numAttrib;
-    memcpy_s (attribList, sizeof (VAConfigAttrib) * (*numAttrib), vaDataFullRX->attribList,
-        sizeof (VAConfigAttrib) * (*numAttrib));
+    HDDLMemoryMgr_Memcpy (attribList, vaDataFullRX->attribList, sizeof (VAConfigAttrib) * (*numAttrib),
+        sizeof (vaDataFullRX->attribList));
     vaStatus = vaDataFullRX->vaDataRX.ret;
 
     HDDLMemoryMgr_FreeMemory (vaDataFullRX);
@@ -2047,7 +2058,8 @@ VAStatus HDDLVAShim_QuerySurfaceStatus (VADriverContextP ctx, VASurfaceID render
         return VA_STATUS_ERROR_UNKNOWN;
     }
 
-    memcpy_s (status, sizeof (VASurfaceStatus), &vaDataRX.status, sizeof (VASurfaceStatus));
+    HDDLMemoryMgr_Memcpy (status, &vaDataRX.status, sizeof (VASurfaceStatus),
+        sizeof (vaDataRX.status));
     vaStatus = vaDataRX.ret;
 
     SHIM_FUNCTION_EXIT ();
@@ -2152,8 +2164,8 @@ VAStatus HDDLVAShim_QueryImageFormats (VADriverContextP ctx, VAImageFormat *form
 
     vaStatus = vaDataFullRX->vaDataRX.ret;
     *numFormat = vaDataFullRX->vaDataRX.numFormat;
-    memcpy_s (formatList, sizeof (VAImageFormat) * (*numFormat), vaDataFullRX->formatList,
-        sizeof (VAImageFormat) * (*numFormat));
+    HDDLMemoryMgr_Memcpy (formatList, vaDataFullRX->formatList,
+        sizeof (VAImageFormat) * (*numFormat), sizeof (vaDataFullRX->formatList));
 
     HDDLMemoryMgr_FreeMemory (vaDataFullRX);
 
@@ -2331,7 +2343,7 @@ VAStatus HDDLVAShim_PutImage (VADriverContextP ctx, VASurfaceID surface, VAImage
         return VA_STATUS_ERROR_INVALID_BUFFER;
     }
 
-    memcpy_s (pBuf, bufSize, vaDataFullRX->bufData, bufSize);
+    HDDLMemoryMgr_Memcpy (pBuf, vaDataFullRX->bufData, bufSize, sizeof (vaDataFullRX->bufData));
 
     vaStatus = HDDLVAShim_UnmapInternalBuffer (vaShimCtx, vaImage->buf, NULL);
     HDDLThreadMgr_UnlockMutex (&vaShimCtx->bufferMutex);
@@ -2449,8 +2461,8 @@ VAStatus HDDLVAShim_QueryDisplayAttributes (VADriverContextP ctx, VADisplayAttri
     }
 
     *numAttributes = vaDataFullRX->vaDataRX.numAttributes;
-    memcpy_s (attrList, sizeof (VADisplayAttribute) * (*numAttributes), &vaDataFullRX->attrList,
-        sizeof (VADisplayAttribute) * (*numAttributes));
+    HDDLMemoryMgr_Memcpy (attrList, &vaDataFullRX->attrList,
+        sizeof (VADisplayAttribute) * (*numAttributes), sizeof (vaDataFullRX->attrList));
     vaStatus = vaDataFullRX->vaDataRX.ret;
 
     HDDLMemoryMgr_FreeMemory (vaDataFullRX);
@@ -2485,8 +2497,8 @@ VAStatus HDDLVAShim_GetDisplayAttributes (VADriverContextP ctx, VADisplayAttribu
     vaDataFullTX.vaDataTX.vaData.vaFunctionID = HDDLVAGetDisplayAttributes;
     vaDataFullTX.vaDataTX.vaData.size = sizeof (HDDLVADataFullTX);
     vaDataFullTX.vaDataTX.numAttributes = numAttributes;
-    memcpy_s (vaDataFullTX.attribList, sizeof (VADisplayAttribute) * numAttributes, attrList,
-        sizeof (VADisplayAttribute) * numAttributes);
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.attribList, attrList,
+        sizeof (vaDataFullTX.attribList), sizeof (VADisplayAttribute) * numAttributes);
 
     typedef struct {
         HDDLVAGetDisplayAttributesRX vaDataRX;
@@ -2506,8 +2518,8 @@ VAStatus HDDLVAShim_GetDisplayAttributes (VADriverContextP ctx, VADisplayAttribu
         return VA_STATUS_ERROR_UNKNOWN;
     }
 
-    memcpy_s (attrList, sizeof (VADisplayAttribute) * numAttributes, vaDataFullRX.attribs,
-        sizeof (VADisplayAttribute) * numAttributes);
+    HDDLMemoryMgr_Memcpy (attrList, vaDataFullRX.attribs,
+	sizeof (VADisplayAttribute) * numAttributes, sizeof (vaDataFullRX.attribs));
     vaStatus = vaDataFullRX.vaDataRX.ret;
 
     SHIM_FUNCTION_EXIT ();
@@ -2542,8 +2554,8 @@ VAStatus HDDLVAShim_SetDisplayAttributes (VADriverContextP ctx, VADisplayAttribu
     vaDataFullTX.vaDataTX.vaData.size = sizeof (HDDLVADataFullTX);
     vaDataFullTX.vaDataTX.numAttributes = numAttributes;
 
-    memcpy_s (vaDataFullTX.attribs, sizeof (VADisplayAttribute) * numAttributes, attrList,
-        sizeof (VADisplayAttribute) * numAttributes);
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.attribs, attrList,
+	sizeof (vaDataFullTX.attribs), sizeof (VADisplayAttribute) * numAttributes);
 
     commStatus = Comm_Submission (commCtx, HDDLVASetDisplayAttributes, COMM_READ_FULL,
         sizeof (HDDLVADataFullTX), (void *)&vaDataFullTX,
@@ -2665,8 +2677,8 @@ VAStatus HDDLVAShim_QuerySurfaceAttributes (VADriverContextP dpy, VAConfigID con
 
     if (attribList)
     {
-        memcpy_s (attribList, sizeof (VASurfaceAttrib) * (*numAttribs), vaDataFullRX->attribList,
-            sizeof (VASurfaceAttrib) * (*numAttribs));
+        HDDLMemoryMgr_Memcpy (attribList, vaDataFullRX->attribList,
+            sizeof (VASurfaceAttrib) * (*numAttribs), sizeof (vaDataFullRX->attribList));
     }
 
     vaStatus = vaDataFullRX->vaDataRX.ret;
@@ -2712,8 +2724,8 @@ VAStatus HDDLVAShim_CreateSurfaces2 (VADriverContextP ctx, unsigned int format, 
     vaDataFullTX.vaDataTX.numSurfaces = numSurfaces;
     vaDataFullTX.vaDataTX.numAttribs = numAttribs;
 
-    memcpy_s (vaDataFullTX.attribList, sizeof (VASurfaceAttrib) * numAttribs, attribList,
-        sizeof (VASurfaceAttrib) * numAttribs);
+    HDDLMemoryMgr_Memcpy (vaDataFullTX.attribList, attribList,
+	sizeof (vaDataFullTX.attribList), sizeof (VASurfaceAttrib) * numAttribs);
 
     //VASurfaceAttribExternalBuffersAndFdBuffer
     for(int i = 0; i < numAttribs; i++)
@@ -2767,8 +2779,8 @@ VAStatus HDDLVAShim_CreateSurfaces2 (VADriverContextP ctx, unsigned int format, 
     }
 
     vaStatus = vaDataFullRX.vaDataRX.ret;
-    memcpy_s (surfaces, sizeof (VASurfaceID) * numSurfaces, vaDataFullRX.surfaces,
-        sizeof (VASurfaceID) * numSurfaces);
+    HDDLMemoryMgr_Memcpy (surfaces, vaDataFullRX.surfaces, sizeof (VASurfaceID) * numSurfaces,
+        sizeof (vaDataFullRX.surfaces));
 
     SHIM_FUNCTION_EXIT ();
     return vaStatus;
@@ -2816,8 +2828,8 @@ VAStatus HDDLVAShim_ExportSurfaceHandle (VADriverContextP ctx, VASurfaceID surfa
     }
 
     vaStatus = vaDataRX.ret;
-    memcpy_s (descriptor, sizeof (VADRMPRIMESurfaceDescriptor), &vaDataRX.descriptor,
-        sizeof (VADRMPRIMESurfaceDescriptor));
+    HDDLMemoryMgr_Memcpy (descriptor, &vaDataRX.descriptor, sizeof (VADRMPRIMESurfaceDescriptor),
+        sizeof (vaDataRX.descriptor));
 
     SHIM_FUNCTION_EXIT ();
     return vaStatus;
@@ -2954,7 +2966,8 @@ VAStatus HDDLVAShim_AcquireBufferHandle (VADriverContextP ctx, VABufferID bufId,
     vaStatus = vaDataRX.ret;
     SHIM_CHK_ERROR (vaStatus, "VA status failed", VA_STATUS_ERROR_UNKNOWN);
 
-    memcpy_s (bufInfo, sizeof (VABufferInfo), &vaDataRX.bufInfo, sizeof (VABufferInfo));
+    HDDLMemoryMgr_Memcpy (bufInfo, &vaDataRX.bufInfo, sizeof (VABufferInfo),
+        sizeof (vaDataRX.bufInfo));
 
     SHIM_FUNCTION_EXIT ();
     return vaStatus;
@@ -3012,6 +3025,7 @@ HDDLShimCommContext *HDDLVAShim_CommContextSetup (HDDLVAShimDriverContext *vaShi
 {
     HDDLShimCommContext *commCtx = NULL;
     CommStatus commStatus;
+    char *batchEnv = getenv ("BYPASS_BATCH_MODE");
 
     commCtx = (HDDLShimCommContext *)HDDLMemoryMgr_AllocAndZeroMemory (
         sizeof (HDDLShimCommContext));
@@ -3020,7 +3034,15 @@ HDDLShimCommContext *HDDLVAShim_CommContextSetup (HDDLVAShimDriverContext *vaShi
     commCtx->pid = pid;
     commCtx->tid = tid;
     commCtx->batchPayload = NULL;
-    IS_BATCH (commCtx) = getenv ("BYPASS_BATCH_MODE");
+    IS_BATCH (commCtx) = true;
+
+    if (batchEnv)
+    {
+        if (atoi (batchEnv) == 0)
+        {
+            IS_BATCH (commCtx) = false;
+        }
+    }
 
     if (commContextNew == MAIN_COMM_CONTEXT)
     {
@@ -3272,6 +3294,9 @@ VAStatus HDDLVAShim_CreateInternalBufferAtHeap (HDDLVAShimDriverContext *vaShimC
         case HANTRODecEmbeddedPostprocessParameterBufferType:
         case HANTRODecMiscParameterBufferType:
         case HANTROEncPSNROutputInfoBufferType:
+#ifndef KMB
+        case HANTROEncCuCtrlBufferType:
+#endif
 #endif
             bufSize = sizeof (unsigned char) * size * numElement;
             vaBuffer->pData = HDDLMemoryMgr_AllocAndZeroMemory (bufSize);
@@ -3279,11 +3304,12 @@ VAStatus HDDLVAShim_CreateInternalBufferAtHeap (HDDLVAShimDriverContext *vaShimC
             // Data might be NULL. Copy data only when it's not null to avoid segfault
             if (data)
             {
-                memcpy_s ( (void *)vaBuffer->pData, bufSize, data, bufSize);
+                HDDLMemoryMgr_Memcpy ( (void *)vaBuffer->pData, data, bufSize,
+		    sizeof (unsigned char) * size * numElement);
             }
             else
             {
-                memset_s ( (void *)vaBuffer->pData, bufSize, 0);
+		HDDLMemoryMgr_ZeroMemory ((void *)vaBuffer->pData, bufSize);
             }
             break;
 
@@ -3373,6 +3399,9 @@ VAStatus HDDLVAShim_MapInternalBuffer (HDDLVAShimDriverContext *vaShimCtx, VABuf
         case HANTRODecEmbeddedPostprocessParameterBufferType:
         case HANTRODecMiscParameterBufferType:
         case HANTROEncPSNROutputInfoBufferType:
+#ifndef KMB
+        case HANTROEncCuCtrlBufferType:
+#endif
 #endif
             *buf = HDDLMemoryMgr_LockBuffer (vaBuffer);
             break;
@@ -3439,6 +3468,9 @@ VAStatus HDDLVAShim_UnmapInternalBuffer (HDDLVAShimDriverContext *vaShimCtx, VAB
         case HANTRODecEmbeddedPostprocessParameterBufferType:
         case HANTRODecMiscParameterBufferType:
         case HANTROEncPSNROutputInfoBufferType:
+#ifndef KMB
+        case HANTROEncCuCtrlBufferType:
+#endif
 #endif
             HDDLMemoryMgr_UnlockBuffer (vaBuffer);
             break;

@@ -53,7 +53,7 @@
 //!          Return pointer if success, else NULL
 //!
 HDDLShimUniteContext *Unite_ContextInit (xLinkChannelId_t channelTX, xLinkChannelId_t channelRX,
-    uint64_t workloadId);
+    uint64_t workloadId, uint32_t swDeviceId);
 
 //!
 //! \brief   Unite communcation initialization

@@ -46,6 +46,7 @@ void *HDDLMemoryMgr_AllocMemory (size_t size)
     else
     {
         SHIM_ASSERT_MESSAGE ("Memory allocation fail");
+        return NULL;
     }
 
     return ptr;
@@ -64,6 +65,7 @@ void *HDDLMemoryMgr_AllocAndZeroMemory (size_t size)
     else
     {
         SHIM_ASSERT_MESSAGE ("Memory allocation fail");
+        return NULL;
     }
 
     return ptr;
@@ -121,7 +123,20 @@ void HDDLMemoryMgr_ZeroMemory (void *destination, size_t length)
 {
     if (destination != NULL)
     {
-        memset_s (destination, length, 0);
+        if (length != 0)
+        {
+            memset (destination, 0, length);
+        }
+        else
+        {
+            SHIM_ASSERT_MESSAGE ("%s failed: Length is 0", __func__);
+            return;
+        }
+    }
+    else
+    {
+        SHIM_ASSERT_MESSAGE ("%s failed: Destination is NULL", __func__);
+        return;
     }
 }
 
@@ -129,7 +144,20 @@ void HDDLMemoryMgr_FillMemory (void *destination, size_t length, uint8_t fill)
 {
     if (destination != NULL)
     {
-        memset_s (destination, length, fill);
+        if (length != 0)
+        {
+            memset (destination, fill, length);
+        }
+        else
+        {
+            SHIM_ASSERT_MESSAGE ("%s failed: Length is 0", __func__);
+            return;
+        }
+    }
+    else
+    {
+        SHIM_ASSERT_MESSAGE ("%s failed: Destination is NULL", __func__);
+        return;
     }
 }
 
@@ -400,4 +428,21 @@ void HDDLMemoryMgr_UnlockBuffer (HDDLVABuffer *buf)
     buf->iRefCount--;
 }
 
+void *HDDLMemoryMgr_Memcpy (void *destBuf, const void *srcBuf, size_t destSize,
+    size_t srcSize)
+{
+    if (destBuf == NULL)
+    {
+        SHIM_ASSERT_MESSAGE ("dest pointer returned NULL");
+        return NULL;
+    }
+
+    if (destSize < srcSize)
+    {
+        SHIM_ASSERT_MESSAGE ("destSize smaller than dataSize. Overflow.");
+        return NULL;
+    }
+
+    return memcpy (destBuf, srcBuf, srcSize);
+}
 //EOF

@@ -75,6 +75,25 @@ bool queryVABufferNodeList (VABufferID bufferId, int32_t *remoteFd, HDDLVABuffer
     return false;
 }
 
+bool HDDLShim_GetGPUNodesAttributes (VADisplay *vaDpy, VAProfile profile, VAEntrypoint entrypoint,
+    VAConfigAttribType type, uint32_t *value)
+{
+    VAConfigAttrib attribs;
+    VAStatus vaStatus = VA_STATUS_ERROR_UNKNOWN;
+
+    attribs.type = type;
+
+    vaStatus = vaGetConfigAttributes (vaDpy, profile, entrypoint, &attribs, 1);
+    if ( (attribs.value == VA_ATTRIB_NOT_SUPPORTED) || (vaStatus != VA_STATUS_SUCCESS))
+    {
+        return false;
+    }
+
+    *value = attribs.value;
+
+    return true;
+}
+
 VAStatus HDDLShim_ExtractPayload (HDDLVAFunctionID functionId, HDDLShimCommContext *ctx,
     void *inPayload, void **outPayload)
 {
@@ -392,8 +411,9 @@ VAStatus HDDLShim_ExtractandCallVAInit (VADisplay vaDpy, void *inPayload, void *
     vaDataRX->max_image_formats = dpyCtx->max_image_formats;
     vaDataRX->max_subpic_formats = dpyCtx->max_subpic_formats;
     vaDataRX->max_display_attributes = dpyCtx->max_display_attributes;
-    memcpy_s (vaDataRX->str_vendor, strnlen_s (dpyCtx->str_vendor,  STR_VENDOR_MAX_STRLEN),
-        dpyCtx->str_vendor, strnlen_s (dpyCtx->str_vendor,  STR_VENDOR_MAX_STRLEN));
+
+    HDDLMemoryMgr_Memcpy (vaDataRX->str_vendor, dpyCtx->str_vendor, sizeof (vaDataRX->str_vendor),
+	strnlen (dpyCtx->str_vendor, STR_VENDOR_MAX_STRLEN));
 
     *outPayload = vaDataRX;
 
@@ -595,7 +615,7 @@ VAStatus HDDLShim_ExtractandCallVACreateSurfaces (VADisplay vaDpy, void *inPaylo
     vaDataFullRX->vaDataRX.vaData.size = rxSize;
     vaDataFullRX->vaDataRX.ret = vaStatus;
 
-    memcpy_s (vaDataFullRX->surfaces, sizeof (VASurfaceID) * numSurfaces, surfaceId,
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->surfaces, surfaceId, sizeof (vaDataFullRX->surfaces),
         sizeof (VASurfaceID) * numSurfaces);
     HDDLMemoryMgr_FreeMemory (surfaceId);
 
@@ -758,7 +778,8 @@ VAStatus HDDLShim_ExtractandCallVAMapBuffer (VADisplay vaDpy, void *inPayload, v
         vaDataFullRX->vaDataRX.vaData.size = rxSize;
         vaDataFullRX->vaDataRX.dataSize = dataSize;
         vaDataFullRX->vaDataRX.ret = vaStatus;
-        memcpy_s ( (void *)vaDataFullRX->data, dataSize, segment, dataSize);
+        HDDLMemoryMgr_Memcpy ( (void *)vaDataFullRX->data, segment,
+	    sizeof (vaDataFullRX->data), dataSize);
 
         vaStatus = vaUnmapBuffer (vaDpy, bufId);
         vaDataFullRX->vaDataRX.ret = vaStatus;
@@ -806,9 +827,10 @@ VAStatus HDDLShim_ExtractandCallVAMapBuffer (VADisplay vaDpy, void *inPayload, v
                 break;
             }
 
-            memcpy_s ( (void *) (vaDataFullRX->segment + i), sizeof (VACodedBufferSegment), loop,
-                sizeof (VACodedBufferSegment));
-            memcpy_s ( (void *) (vaDataFullRX->data + offset), loop->size, loop->buf, loop->size);
+            HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullRX->segment + i), loop,
+	        sizeof (vaDataFullRX->segment) - i, sizeof (VACodedBufferSegment));
+            HDDLMemoryMgr_Memcpy ( (void *) (vaDataFullRX->data + offset), loop->buf,
+		sizeof (vaDataFullRX->data) - offset, loop->size);
             offset += loop->size;
             loop = loop->next;
         }
@@ -864,28 +886,32 @@ VAStatus HDDLShim_ExtractandCallVAUnmapBuffer (VADisplay vaDpy, void *inPayload,
                 {
                     VAEncMiscParameterBufferROI *misc_roi_param =
                                 (VAEncMiscParameterBufferROI *)misc_param->data;
-                    VAEncROI *region_roi = misc_roi_param->roi;
-
-                    memcpy_s (misc_roi_param, sizeof (VAEncMiscParameterBufferROI),
-                                (void *) (vaDataFullTX->data + offset), sizeof (VAEncMiscParameterBufferROI));
+                    HDDLMemoryMgr_Memcpy (misc_roi_param, (void *) (vaDataFullTX->data + offset),
+		        sizeof (VAEncMiscParameterBufferROI),
+			sizeof (vaDataFullTX->data) - sizeof (VAEncROI) - offset);
 
                     offset += sizeof (VAEncMiscParameterBufferROI);
-                    memcpy_s (region_roi, sizeof (VAEncROI), (void *) (vaDataFullTX->data + offset),
-                                sizeof (VAEncROI));
+		    VAEncROI *region_roi = pBuf + offset;
+
+                    HDDLMemoryMgr_Memcpy (region_roi, (void *) (vaDataFullTX->data + offset),
+		        sizeof (VAEncROI), sizeof (vaDataFullTX->data) - offset);
                 }
                 else if ( (int) ( (VAEncMiscParameterBuffer *) (vaDataFullTX->data))->type
                     == HANTROEncMiscParameterTypeIPCM)
                 {
                     misc_param->type = HANTROEncMiscParameterTypeIPCM;
-                    HANTROEncMiscParameterBufferIPCM *misc_ipcm_param = (HANTROEncMiscParameterBufferIPCM *)misc_param->data;
-                    memcpy_s (misc_ipcm_param, sizeof (HANTROEncMiscParameterBufferIPCM),
-                        (void *) (vaDataFullTX->data + offset), sizeof (HANTROEncMiscParameterBufferIPCM));
+                    HANTROEncMiscParameterBufferIPCM *misc_ipcm_param =
+		        (HANTROEncMiscParameterBufferIPCM *)misc_param->data;
+                    HDDLMemoryMgr_Memcpy (misc_ipcm_param, (void *) (vaDataFullTX->data + offset),
+		        sizeof (HANTROEncMiscParameterBufferIPCM), sizeof (vaDataFullTX->data) -
+			(sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm) - offset);
 
                     offset += sizeof (HANTROEncMiscParameterBufferIPCM);
                     HANTRORectangle *region_ipcm = pBuf + offset;
 
-                    memcpy_s (region_ipcm, sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm, (void *) (vaDataFullTX->data + offset),
-                        sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm);
+                    HDDLMemoryMgr_Memcpy (region_ipcm, (void *) (vaDataFullTX->data + offset),
+                        sizeof (HANTRORectangle) * misc_ipcm_param->num_ipcm,
+			sizeof (vaDataFullTX->data) - offset);
 
                     misc_ipcm_param->ipcm = region_ipcm;
                 }
@@ -893,21 +919,25 @@ VAStatus HDDLShim_ExtractandCallVAUnmapBuffer (VADisplay vaDpy, void *inPayload,
                     == HANTROEncMiscParameterTypeROI)
                 {
                     misc_param->type = HANTROEncMiscParameterTypeROI;
-                    HANTROEncMiscParameterBufferROI *misc_roi_param = (HANTROEncMiscParameterBufferROI *)misc_param->data;
-                    memcpy_s (misc_roi_param, sizeof (HANTROEncMiscParameterBufferROI),
-                        (void *) (vaDataFullTX->data + offset), sizeof (HANTROEncMiscParameterBufferROI));
+                    HANTROEncMiscParameterBufferROI *misc_roi_param =
+		        (HANTROEncMiscParameterBufferROI *)misc_param->data;
+                    HDDLMemoryMgr_Memcpy (misc_roi_param, (void *) (vaDataFullTX->data + offset),
+		        sizeof (HANTROEncMiscParameterBufferROI), sizeof (vaDataFullTX->data) -
+			(sizeof (HANTROEncROI) * misc_roi_param->num_roi) - offset);
 
                     offset += sizeof (HANTROEncMiscParameterBufferROI);
                     HANTROEncROI *region_roi = pBuf + offset;
 
-                    memcpy_s (region_roi, sizeof (HANTROEncROI) * misc_roi_param->num_roi, (void *) (vaDataFullTX->data + offset),
-                        sizeof (HANTROEncROI) * misc_roi_param->num_roi);
+                    HDDLMemoryMgr_Memcpy (region_roi, (void *) (vaDataFullTX->data + offset),
+                        sizeof (HANTROEncROI) * misc_roi_param->num_roi,
+			sizeof (vaDataFullTX->data) - offset);
 
                     misc_roi_param->roi = region_roi;
                 }
                 else
                 {
-                    memcpy_s (pBuf, dataSize, vaDataFullTX->data, dataSize);
+                    HDDLMemoryMgr_Memcpy (pBuf, vaDataFullTX->data, dataSize,
+		        sizeof (vaDataFullTX->data));
                 }
             }
             else if (vaDataTX->bufType == VAProcPipelineParameterBufferType)
@@ -915,25 +945,29 @@ VAStatus HDDLShim_ExtractandCallVAUnmapBuffer (VADisplay vaDpy, void *inPayload,
                 VAProcPipelineParameterBuffer *pipelineParam = (VAProcPipelineParameterBuffer *)pBuf;
                 unsigned int offset = sizeof (VAProcPipelineParameterBuffer);
 
-                memcpy_s (pipelineParam, sizeof (VAProcPipelineParameterBuffer),
-                    (void *) (vaDataFullTX->data), sizeof (VAProcPipelineParameterBuffer));
+                HDDLMemoryMgr_Memcpy (pipelineParam, (void *) (vaDataFullTX->data),
+		    sizeof (VAProcPipelineParameterBuffer), offset);
 
                 uint32_t numAdditionalOutputs = pipelineParam->num_additional_outputs;
 
-                VARectangle *surfaceRegion = HDDLMemoryMgr_AllocMemory (sizeof (VARectangle) * numAdditionalOutputs);
-                memcpy_s (surfaceRegion, sizeof (VARectangle) * numAdditionalOutputs,
-                    (void *) (vaDataFullTX->data + offset), sizeof (VARectangle) * numAdditionalOutputs);
+                VARectangle *surfaceRegion =
+		    HDDLMemoryMgr_AllocMemory (sizeof (VARectangle) * numAdditionalOutputs);
+                HDDLMemoryMgr_Memcpy (surfaceRegion, (void *) (vaDataFullTX->data + offset),
+		    sizeof (VARectangle) * numAdditionalOutputs, sizeof (vaDataFullTX->data) -
+		    (sizeof (VASurfaceID) * numAdditionalOutputs) - offset);
                 pipelineParam->surface_region = surfaceRegion;
 
                 offset += (sizeof (VARectangle) * numAdditionalOutputs);
-                VASurfaceID *additionalOutputs = HDDLMemoryMgr_AllocMemory (sizeof (VASurfaceID) * numAdditionalOutputs);
-                memcpy_s (additionalOutputs, sizeof (VASurfaceID) * numAdditionalOutputs,
-                    (void *) (vaDataFullTX->data + offset), sizeof (VASurfaceID) * numAdditionalOutputs);
+                VASurfaceID *additionalOutputs =
+	            HDDLMemoryMgr_AllocMemory (sizeof (VASurfaceID) * numAdditionalOutputs);
+                HDDLMemoryMgr_Memcpy (additionalOutputs, (void *) (vaDataFullTX->data + offset),
+		    sizeof (VASurfaceID) * numAdditionalOutputs,
+		    sizeof (vaDataFullTX->data) - offset);
                 pipelineParam->additional_outputs = additionalOutputs;
             }
             else
             {
-                memcpy_s (pBuf, dataSize, vaDataFullTX->data, dataSize);
+                HDDLMemoryMgr_Memcpy (pBuf, vaDataFullTX->data, dataSize, sizeof (vaDataFullTX->data));
             }
         }
         else
@@ -1184,8 +1218,9 @@ VAStatus HDDLShim_ExtractandCallVAQueryConfigProfiles (VADisplay vaDpy, void *in
     vaDataFullRX->vaDataRX.ret = vaStatus;
     vaDataFullRX->vaDataRX.numProfile = numProfiles;
 
-    memcpy_s (vaDataFullRX->profileList, sizeof (VAProfile) * numProfiles, profileList,
-        sizeof (VAProfile) * numProfiles);
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->profileList, profileList,
+	sizeof (vaDataFullRX->profileList), sizeof (VAProfile) * numProfiles);
+
     HDDLMemoryMgr_FreeMemory (profileList);
 
     *outPayload = vaDataFullRX;
@@ -1227,8 +1262,9 @@ VAStatus HDDLShim_ExtractandCallVAQueryConfigEntrypoints (VADisplay vaDpy, void 
     vaDataFullRX->vaDataRX.ret = vaStatus;
     vaDataFullRX->vaDataRX.numEntrypoint = numEntrypoint;
 
-    memcpy_s (vaDataFullRX->entrypointList, sizeof (VAEntrypoint) * numEntrypoint, entrypointList,
-        sizeof (VAEntrypoint) * numEntrypoint);
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->entrypointList, entrypointList,
+	sizeof (vaDataFullRX->entrypointList), sizeof (VAEntrypoint) * numEntrypoint);
+
     HDDLMemoryMgr_FreeMemory (entrypointList);
 
     *outPayload = vaDataFullRX;
@@ -1275,8 +1311,8 @@ VAStatus HDDLShim_ExtractandCallVAGetConfigAttributes (VADisplay vaDpy, void *in
     vaDataFullRX->vaDataRX.ret = vaStatus;
     vaDataFullRX->vaDataRX.numAttrib = numAttrib;
 
-    memcpy_s (vaDataFullRX->attribList, sizeof (VAConfigAttrib) * (numAttrib),
-        vaDataFullTX->attribList, sizeof (VAConfigAttrib) * (numAttrib));
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->attribList, vaDataFullTX->attribList,
+        sizeof (vaDataFullRX->attribList), sizeof (VAConfigAttrib) * (numAttrib));
 
     *outPayload = vaDataFullRX;
 
@@ -1322,8 +1358,9 @@ VAStatus HDDLShim_ExtractandCallVAQueryConfigAttributes (VADisplay vaDpy, void *
     vaDataFullRX->vaDataRX.entrypoint = entrypoint;
     vaDataFullRX->vaDataRX.numAttrib = numAttrib;
 
-    memcpy_s (vaDataFullRX->attribList, sizeof (VAConfigAttrib) * (numAttrib), attribList,
-        sizeof (VAConfigAttrib) * (numAttrib));
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->attribList, attribList,
+        sizeof (vaDataFullRX->attribList), sizeof (VAConfigAttrib) * (numAttrib));
+
     HDDLMemoryMgr_FreeMemory (attribList);
 
     *outPayload = vaDataFullRX;
@@ -1395,8 +1432,8 @@ VAStatus HDDLShim_ExtractandCallVAQueryImageFormats (VADisplay vaDpy, void *inPa
     vaDataFullRX->vaDataRX.ret = vaStatus;
     vaDataFullRX->vaDataRX.numFormat = numFormat;
 
-    memcpy_s (vaDataFullRX->formatList, sizeof (VAImageFormat) * (numFormat), formatList,
-        sizeof (VAImageFormat) * (numFormat));
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->formatList, formatList,
+	sizeof (vaDataFullRX->formatList), sizeof (VAImageFormat) * (numFormat));
     HDDLMemoryMgr_FreeMemory (formatList);
 
     *outPayload = vaDataFullRX;
@@ -1463,7 +1500,7 @@ VAStatus HDDLShim_ExtractandCallVAPutImage (VADisplay vaDpy, void *inPayload, vo
     vaDataFullRX->vaDataRX.vaData.vaFunctionID = HDDLVAPutImage;
     vaDataFullRX->vaDataRX.vaData.size = rxSize;
     vaDataFullRX->vaDataRX.ret = vaStatus;
-    memcpy_s (vaDataFullRX->bufData, bufSize, pBuf, bufSize);
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->bufData, pBuf, sizeof (vaDataFullRX->bufData), bufSize);
 
     vaStatus = vaUnmapBuffer (vaDpy, bufId);
 
@@ -1505,8 +1542,8 @@ VAStatus HDDLShim_ExtractandCallVAQueryDisplayAttributes (VADisplay vaDpy, void 
     vaDataFullRX->vaDataRX.ret = vaStatus;
     vaDataFullRX->vaDataRX.numAttributes = numAttributes;
 
-    memcpy_s (vaDataFullRX->attrList, sizeof (VADisplayAttribute) * numAttributes, attrList,
-        sizeof (VADisplayAttribute) * numAttributes);
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->attrList, attrList,
+	sizeof (vaDataFullRX->attrList), sizeof (VADisplayAttribute) * numAttributes);
 
     *outPayload = vaDataFullRX;
 
@@ -1550,8 +1587,8 @@ VAStatus HDDLShim_ExtractandCallVAGetDisplayAttributes (VADisplay vaDpy, void *i
     vaDataFullRX->vaDataRX.vaData.size = rxSize;
     vaDataFullRX->vaDataRX.ret = vaStatus;
 
-    memcpy_s (vaDataFullRX->attribs, sizeof (VADisplayAttribute) * numAttributes,
-        vaDataFullTX->attribList, sizeof (VADisplayAttribute) * numAttributes);
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->attribs, vaDataFullTX->attribList,
+        sizeof (vaDataFullRX->attribs), sizeof (VADisplayAttribute) * numAttributes);
 
     *outPayload = vaDataFullRX;
 
@@ -1653,8 +1690,8 @@ VAStatus HDDLShim_ExtractandCallVAQuerySurfaceAttributes (VADisplay vaDpy, void 
 
     if (!querySize)
     {
-        memcpy_s (vaDataFullRX->attribList, sizeof (VASurfaceAttrib) * numAttribs, attribList,
-            sizeof (VASurfaceAttrib) * numAttribs);
+        HDDLMemoryMgr_Memcpy (vaDataFullRX->attribList, attribList,
+	    sizeof (vaDataFullRX->attribList), sizeof (VASurfaceAttrib) * numAttribs);
         HDDLMemoryMgr_FreeMemory (attribList);
     }
 
@@ -1715,8 +1752,8 @@ VAStatus HDDLShim_ExtractandCallVACreateSurfaces2 (VADisplay vaDpy, void *inPayl
                 {
                     int32_t originalFd;
                     int32_t remoteFd = memAttribute->buffers[g];
+                    hddlStatus = importDMABuf (remoteFd, &originalFd, swDeviceId);
 
-                    hddlStatus = importDMABuf (remoteFd, &originalFd);
                     if (hddlStatus == HDDL_OK)
                     {
                         SHIM_NORMAL_MESSAGE (
@@ -1789,7 +1826,7 @@ VAStatus HDDLShim_ExtractandCallVACreateSurfaces2 (VADisplay vaDpy, void *inPayl
     vaDataFullRX->vaDataRX.vaData.size = rxSize;
     vaDataFullRX->vaDataRX.ret = vaStatus;
 
-    memcpy_s (vaDataFullRX->surfaces, sizeof (VASurfaceID) * (numSurfaces), surfaces,
+    HDDLMemoryMgr_Memcpy (vaDataFullRX->surfaces, surfaces, sizeof (vaDataFullRX->surfaces),
         sizeof(VASurfaceID) * (numSurfaces));
     HDDLMemoryMgr_FreeMemory (surfaces);
 
@@ -1811,7 +1848,7 @@ VAStatus HDDLShim_ExtractandCallVAExportSurfaceHandle (VADisplay vaDpy, void *in
     VAStatus vaStatus;
     uint32_t rxSize = sizeof (HDDLVAExportSurfaceHandleRX);
 
-    memset_s (&descriptor, sizeof (VADRMPRIMESurfaceDescriptor), 0);
+    HDDLMemoryMgr_ZeroMemory (&descriptor, sizeof (VADRMPRIMESurfaceDescriptor));
 
     //Call VSI function
     vaStatus = vaExportSurfaceHandle (vaDpy, vaDataTX->surfaceId, vaDataTX->memType,
@@ -1823,8 +1860,8 @@ VAStatus HDDLShim_ExtractandCallVAExportSurfaceHandle (VADisplay vaDpy, void *in
     vaDataRX->vaData.vaFunctionID = HDDLVAExportSurfaceHandle;
     vaDataRX->vaData.size = rxSize;
     vaDataRX->ret = vaStatus;
-    memcpy_s (&vaDataRX->descriptor, sizeof (VADRMPRIMESurfaceDescriptor), &descriptor,
-        sizeof (VADRMPRIMESurfaceDescriptor));
+    HDDLMemoryMgr_Memcpy (&vaDataRX->descriptor, &descriptor, sizeof (vaDataRX->descriptor),
+	sizeof (VADRMPRIMESurfaceDescriptor));
 
     SHIM_NORMAL_MESSAGE ("%s: Obtained fd %d with size %d", __func__,
         vaDataRX->descriptor.objects[0].fd, vaDataRX->descriptor.objects[0].size);
@@ -1935,7 +1972,7 @@ VAStatus HDDLShim_ExtractandCallVAAcquireBufferHandle(VADisplay vaDpy, void *inP
     VABufferInfo bufferInfo;
     uint32_t rxSize = sizeof (HDDLVAAcquireBufferHandleRX);
 
-    memset_s (&bufferInfo, sizeof (bufferInfo), 0);
+    HDDLMemoryMgr_ZeroMemory (&bufferInfo, sizeof (bufferInfo));
 
     //Call VA function
     vaStatus = vaAcquireBufferHandle (vaDpy, vaDataTX->bufId, &bufferInfo);
@@ -1946,7 +1983,8 @@ VAStatus HDDLShim_ExtractandCallVAAcquireBufferHandle(VADisplay vaDpy, void *inP
     vaDataRX->vaData.vaFunctionID = HDDLVAAcquireBufferHandle;
     vaDataRX->vaData.size = rxSize;
     vaDataRX->ret = vaStatus;
-    memcpy_s (&vaDataRX->bufInfo, sizeof (VABufferInfo), &bufferInfo, sizeof (VABufferInfo));
+    HDDLMemoryMgr_Memcpy (&vaDataRX->bufInfo, &bufferInfo, sizeof (vaDataRX->bufInfo),
+	sizeof (VABufferInfo));
 
     *outPayload = vaDataRX;
 

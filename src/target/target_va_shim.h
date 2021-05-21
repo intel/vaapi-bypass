@@ -41,6 +41,8 @@
 #include <DeviceClient.h>
 #endif
 
+#define MAX_ERROR_RETRY 5
+
 //!
 //! \brief   Main program to start VAAPI Shim on accelerator
 //! \return  int
@@ -68,9 +70,9 @@ void MainReceiverListener (HDDLShimCommContext *ctx);
 //! \return  void
 //!          Return nothing
 //!
-void HDDLShim_NewWorkloadAvailable (uint64_t workloadId, ChannelID* channelId, uint32_t channelNum);
+void HDDLShim_NewWorkloadAvailable (uint64_t workloadId, ChannelID* channelId, uint32_t channelNum,
+    uint32_t swDeviceID);
 #endif
-
 //!
 //! \brief   Starting a execution new thread
 //! \return  void
