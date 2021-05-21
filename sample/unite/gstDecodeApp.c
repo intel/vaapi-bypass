@@ -37,6 +37,7 @@
 #define CODEC_MAX_STRLEN 10
 #define OUTPUTNAME_MAX_STRLEN 300
 
+
 typedef struct _PARAMS
 {
     gchar *source;
@@ -201,8 +202,8 @@ int main (int argc, char *argv[])
 
     for (int i=0; i < numThreads; i++)
     {
-        gchar *codec = malloc (sizeof (gchar) * (strnlen_s (argv[1],  CODEC_MAX_STRLEN)));
-        gchar *outputName = malloc (sizeof (gchar) * (strnlen_s (argv[3],
+	gchar *codec = malloc (sizeof (gchar) * (strnlen (argv[1], CODEC_MAX_STRLEN)));
+        gchar *outputName = malloc (sizeof (gchar) * (strnlen (argv[3],
 	    OUTPUTNAME_MAX_STRLEN) + 6));
 
         sprintf (codec, "%s", argv[1]);

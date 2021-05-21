@@ -21,7 +21,6 @@
 cmake_minimum_required (VERSION 3.5)
 project (sample)
 include (FindPkgConfig)
-include (${CMAKE_SOURCE_DIR}/../../cmake/safestringlib_include.cmake)
 
 option (DEBUG "Turn on debug build." OFF)
 
@@ -53,8 +52,6 @@ else ()
     message ("Failed to find HDDLUnite")
 endif ()
 
-FindSafeStringLib ()
-
 # Set debug option
 if (DEBUG)
     set (CMAKE_BUILD_TYPE debug)
@@ -79,12 +76,3 @@ set (ENC_APP "gstEncodeApp")
 add_executable (${ENC_APP} ${ENC_APP}.c)
 target_link_libraries (${ENC_APP} ${LINK_LIBS})
 
-if (DEFINED ENV{USE_SYSTEM_SAFESTR})
-    target_link_libraries (${ENC_APP} ${SAFESTRINGLIB})
-    target_link_libraries (${DEC_APP} ${SAFESTRINGLIB})
-    target_link_libraries (gstbypass ${SAFESTRINGLIB})
-else ()
-    target_link_libraries (${ENC_APP} libsafestring)
-    target_link_libraries (${DEC_APP} libsafestring)
-    target_link_libraries (gstbypass libsafestring)
-endif ()
